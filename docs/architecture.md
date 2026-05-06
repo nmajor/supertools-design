@@ -7,6 +7,21 @@
 3. Make progress legible: a single status file the user (and Claude) can inspect at any time to see what's done and what's next.
 4. Stay composable: each workflow stands alone, can be redone, and writes to its own subdirectory.
 
+## Hard prerequisite: Design OS must be complete
+
+Every supertools-design command — including `start`, every workflow command, and every future workflow we add — refuses to do any work unless Design OS is fully complete and has produced its export package.
+
+The check is simple and identical in every command:
+
+1. `product-plan/README.md` exists.
+2. `product-plan/product-overview.md` exists.
+
+If either is missing, the command tells the user to finish Design OS (including its export step) and stops. No partial runs, no "Design OS-lite" mode.
+
+We check the *output* of Design OS, not the steps that produced it. supertools-design must not hardcode Design OS command names — those belong to Design OS and may change. Our contract is the existence of `product-plan/` with the canonical files.
+
+`/supertools-design:status` is the one exception — it's read-only and useful even before Design OS is done (it prompts the user to run `/supertools-design:start` if the tracker doesn't exist yet).
+
 ## Mental model
 
 Design OS produces the product definition (`product/`) and screen designs (`src/`). supertools-design produces the *implementation surround* — everything that has to be decided before code can be written, that Design OS deliberately leaves open.

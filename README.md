@@ -40,15 +40,13 @@ cd acme-design
 claude
 ```
 
-In Claude:
+supertools-design only runs after Design OS is complete. Finish the Design OS flow first (including its export step that produces `product-plan/`), then in Claude:
 
 ```
-/product-vision               # Design OS: define product, roadmap, data shape
-/design-tokens                # Design OS: pick palette + typography
-/design-shell                 # Design OS: design app shell
-/shape-section                # Design OS: design each section
-/supertools-design:start      # Supertools: initialize and step through workflows
+/supertools-design:start      # initialize and step through workflows
 ```
+
+The gate is enforced in every supertools-design workflow command — see [docs/architecture.md](docs/architecture.md).
 
 ## How it's organized
 

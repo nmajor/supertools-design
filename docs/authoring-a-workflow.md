@@ -24,8 +24,8 @@ Before writing the command file, decide:
 
 What does this workflow need to exist before it can run?
 
-- Always check at minimum: `product/product-overview.md` (Design OS has been initialized).
-- List any other Design OS files this workflow depends on.
+- **Mandatory first check (every workflow):** Verify Design OS is complete by checking that `product-plan/README.md` and `product-plan/product-overview.md` both exist. If either is missing, tell the user to finish Design OS and stop. Use the exact prerequisite-check block from any existing workflow command — do not invent your own wording. This rule is non-negotiable; see `docs/architecture.md` ("Hard prerequisite").
+- After the gate, list any additional Design OS files this workflow depends on (e.g. specific sections, design tokens).
 - List any other supertools-design workflows that must run first.
 
 If anything's missing, name the exact command to run and `STOP`. Don't half-run.

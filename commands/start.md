@@ -2,25 +2,20 @@
 
 You are initializing the supertools-design workflow for the user. This command sets up the status tracker and explains what supertools-design adds on top of Design OS.
 
-## Step 1: Check Prerequisites
+## Step 1: Check Design OS is complete
 
-Verify Design OS has been initialized. Read:
+supertools-design refuses to run any workflow until Design OS is fully complete. Verify both files exist:
 
-1. `/product/product-overview.md`
+1. `product-plan/README.md`
+2. `product-plan/product-overview.md`
 
-If it doesn't exist:
+If either is missing, tell the user:
 
-"Before starting the supertools-design workflow, you need to define your product with Design OS first. Please run:
+"supertools-design only runs after Design OS is complete. I don't see a finished `product-plan/` directory — that's what Design OS produces when its export step finishes.
 
-1. `/product-vision` — Define your product, roadmap, and data shape
+Please complete the Design OS flow (including its export step) so that `product-plan/` exists with `README.md` and `product-overview.md`, then return."
 
-You can then return here. supertools-design picks up where Design OS leaves off."
-
-Stop here if the prerequisite is missing.
-
-If `/product/product-roadmap.md` and `/product/data-shape/data-shape.md` exist, that's even better — note their presence in the briefing below.
-
-Optionally also check whether the user has gotten further in the Design OS flow (design tokens, shell, sections). It's fine if they haven't — supertools-design can run alongside Design OS, not strictly after it. But the more of Design OS that's done, the better the supertools defaults will be.
+Stop. Do not proceed.
 
 ## Step 2: Check If Already Initialized
 

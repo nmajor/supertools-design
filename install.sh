@@ -78,9 +78,8 @@ Done. Project created at ./$DIR/
   cd $DIR
   claude
 
-In Claude, get started with:
-  /product-vision               (Design OS — define product, roadmap, data shape)
-  /supertools-design:start      (Supertools — initialize the post-Design-OS flow)
+In Claude, complete the Design OS flow first (it produces product-plan/), then run:
+  /supertools-design:start      (initialize the post-Design-OS flow)
 
 To update supertools-design later:
   rm -rf .supertools && git clone --depth 1 $SUPERTOOLS_REPO .supertools && rm -rf .supertools/.git

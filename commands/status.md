@@ -10,7 +10,7 @@ If it doesn't exist:
 
 "supertools-design hasn't been initialized for this project yet. Run `/supertools-design:start` to set it up.
 
-(If you haven't run Design OS yet either, start with `/product-vision` to define your product.)"
+(If you haven't completed the Design OS flow yet, do that first — supertools-design refuses to run until Design OS has produced its `product-plan/` export.)"
 
 Stop here.
 
