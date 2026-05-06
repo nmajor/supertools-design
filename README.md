@@ -18,12 +18,13 @@ supertools-design picks up where Design OS leaves off and bakes in opinionated d
 | `/supertools-design:email` | Transactional email setup + templates |
 | `/supertools-design:prd` | Final PRD + Ralph-loop-ready task list |
 
-Plus two control commands:
+Plus three control / orchestration commands:
 
 | Command | Purpose |
 | --- | --- |
 | `/supertools-design:start` | Initialize the workflow tracker, brief on what's coming |
 | `/supertools-design:status` | Show the running tally — what's done, what's next |
+| `/supertools-design:bootstrap` | Bootstrap a new project from `product-plan/` and walk a series of "concern" modules to apply defaults |
 
 ## Install
 
@@ -51,9 +52,10 @@ The gate is enforced in every supertools-design workflow command — see [docs/a
 ## How it's organized
 
 - `commands/` — One Markdown file per slash command. Auto-namespaced as `/supertools-design:<name>` once symlinked into a project's `.claude/commands/supertools-design/`.
+- `concerns/` — Numbered modules used by the `bootstrap` orchestrator. Each is a folder with `SKILL.md` (intent), `verify.mjs` (programmatic smoke test), `requires.json` (deps + env), `README.md`. See [docs/authoring-a-concern.md](docs/authoring-a-concern.md).
 - `skills/` — Skills with bundled assets (scripts, templates). Used when a workflow needs more than a single Markdown file.
 - `templates/` — Shared snippets that workflows pull from.
-- `docs/` — Architecture and workflow-authoring guides.
+- `docs/` — Architecture, workflow-authoring guide, concern-authoring guide.
 - `install.sh` — The bootstrap script.
 - `.claude-plugin/plugin.json` — Plugin manifest for the optional Claude Code plugin path.
 
@@ -61,7 +63,7 @@ See [docs/architecture.md](docs/architecture.md) for the full design.
 
 ## Status
 
-This is v0.1 — a scaffold. The orchestration commands (`start`, `status`) are real; every workflow command is a placeholder stub. Workflows get filled in one at a time.
+This is v0.1 — a scaffold. The orchestration commands (`start`, `status`, `bootstrap`) are real; every workflow command and every concern is a placeholder stub. Workflows and concerns get filled in one at a time.
 
 ## License
 

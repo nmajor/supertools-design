@@ -115,6 +115,40 @@ You are helping the user <one-line purpose>.
 
 See [authoring-a-workflow.md](authoring-a-workflow.md) for the full template and a checklist when adding a new workflow.
 
+## Bootstrapping new projects (concerns + receipts)
+
+Distinct from the per-workflow commands above, supertools-design also exposes a bootstrap orchestrator (`/supertools-design:bootstrap`) that creates a new project folder from a finished Design OS plan and applies defaults via a series of **concern** modules.
+
+The bootstrap pattern is independent of the workflow pattern. Workflows produce decision documents that go in `product/supertools/<workflow>/` and update `status.md`; concerns wire up real infrastructure in a new project folder and track progress via per-concern receipts.
+
+### Concerns
+
+A concern is a self-contained module of the bootstrap pipeline. Each lives in `concerns/<NN-name>/` with four files:
+
+- `SKILL.md` — intent prose (run by Claude when the orchestrator invokes the concern)
+- `verify.mjs` — programmatic smoke test (exit 0/1)
+- `requires.json` — declared dependencies and env requirements
+- `README.md` — human-readable purpose
+
+The numeric prefix determines run order. The orchestrator walks them in order. Adding a new concern = creating a new numbered folder; the orchestrator picks it up automatically.
+
+### Receipts
+
+Each concern writes a receipt to `<project>/.supertools-state/<concern-name>.json` on success. The orchestrator skips concerns with valid receipts on re-runs, making the pipeline resumable after partial failures.
+
+The orchestrator's own state lives at `product/supertools/bootstrap-state.json` in the design folder — it tracks the project path and domain so re-runs of `/supertools-design:bootstrap` can pick up where they left off.
+
+### Why concerns instead of more workflows
+
+The workflow pattern (single Markdown command, `product/supertools/status.md` tracker) is the right shape for **decision-document workflows** that produce specs the user reviews. It's not the right shape for a long pipeline that has to wire things up against external services (Cloudflare, GitHub, etc.) and may fail in the middle.
+
+Concerns add three things workflows don't:
+- **Bundled non-Markdown assets** (verify scripts) for programmatic verification — never ask Claude to verify, run a probe.
+- **Receipts** for resumability across runs.
+- **Numeric ordering** for an explicit pipeline contract.
+
+When designing new functionality: use a workflow for "produce a decision document"; use a concern for "actually set something up." See [authoring-a-concern.md](authoring-a-concern.md).
+
 ## Why commands, not skills (for now)
 
 Claude Code skills (`skills/<name>/SKILL.md`) support bundled scripts and richer frontmatter, while commands (`commands/<name>.md`) are flat Markdown. Most workflows are conversational and write text outputs — a single `.md` file is sufficient.
