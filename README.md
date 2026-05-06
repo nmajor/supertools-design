@@ -1,0 +1,70 @@
+# supertools-design
+
+Opinionated post-[Design OS](https://github.com/buildermethods/design-os) workflows that turn a finished Design OS plan into a full hands-off Ralph-loop deployment package: brand assets, tech-stack picks, working API POCs, analytics taxonomy, SEO scaffolding, transactional email setup, and a final PRD with task list.
+
+## What it adds on top of Design OS
+
+Design OS gets you to: product overview, roadmap, data shape, design system, screen designs, and an export package. It deliberately leaves implementation choices to the agent that picks up the export.
+
+supertools-design picks up where Design OS leaves off and bakes in opinionated defaults so the next step can be a hands-off implementation loop.
+
+| Workflow | Output |
+| --- | --- |
+| `/supertools-design:logo` | Brand logo, favicon, iOS icons, logo variations |
+| `/supertools-design:tech-stack` | Framework, hosting, deployment decisions |
+| `/supertools-design:apis` | Third-party API list + working POC scripts |
+| `/supertools-design:analytics` | Analytics stack + event taxonomy |
+| `/supertools-design:seo-framework` | Resources / SEO page scaffolding (no content) |
+| `/supertools-design:email` | Transactional email setup + templates |
+| `/supertools-design:prd` | Final PRD + Ralph-loop-ready task list |
+
+Plus two control commands:
+
+| Command | Purpose |
+| --- | --- |
+| `/supertools-design:start` | Initialize the workflow tracker, brief on what's coming |
+| `/supertools-design:status` | Show the running tally — what's done, what's next |
+
+## Install
+
+Bootstrap a new project:
+
+```sh
+curl -fsSL https://raw.githubusercontent.com/nmajor/supertools-design/main/install.sh | bash -s acme
+```
+
+That creates `acme-design/` containing a clone of Design OS plus supertools-design wired into `.claude/`. Then:
+
+```sh
+cd acme-design
+claude
+```
+
+In Claude:
+
+```
+/product-vision               # Design OS: define product, roadmap, data shape
+/design-tokens                # Design OS: pick palette + typography
+/design-shell                 # Design OS: design app shell
+/shape-section                # Design OS: design each section
+/supertools-design:start      # Supertools: initialize and step through workflows
+```
+
+## How it's organized
+
+- `commands/` — One Markdown file per slash command. Auto-namespaced as `/supertools-design:<name>` once symlinked into a project's `.claude/commands/supertools-design/`.
+- `skills/` — Skills with bundled assets (scripts, templates). Used when a workflow needs more than a single Markdown file.
+- `templates/` — Shared snippets that workflows pull from.
+- `docs/` — Architecture and workflow-authoring guides.
+- `install.sh` — The bootstrap script.
+- `.claude-plugin/plugin.json` — Plugin manifest for the optional Claude Code plugin path.
+
+See [docs/architecture.md](docs/architecture.md) for the full design.
+
+## Status
+
+This is v0.1 — a scaffold. The orchestration commands (`start`, `status`) are real; every workflow command is a placeholder stub. Workflows get filled in one at a time.
+
+## License
+
+MIT. See [LICENSE](LICENSE).

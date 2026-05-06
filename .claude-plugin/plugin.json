@@ -1,0 +1,11 @@
+{
+  "name": "supertools-design",
+  "description": "Opinionated post-Design-OS workflows: brand assets, tech-stack picks, API POCs, analytics, SEO scaffold, email, and a final Ralph-loop-ready PRD.",
+  "version": "0.1.0",
+  "author": {
+    "name": "Nick Major"
+  },
+  "license": "MIT",
+  "repository": "https://github.com/nmajor/supertools-design",
+  "homepage": "https://github.com/nmajor/supertools-design"
+}
