@@ -1,6 +1,6 @@
 {
   "name": "70-analytics",
   "requires": [],
-  "envRequired": [],
+  "envRequired": ["RYBBIT_API_KEY", "RYBBIT_HOST"],
   "provides": []
 }

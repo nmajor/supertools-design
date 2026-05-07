@@ -1,5 +1,5 @@
 # 70-analytics
 
-Wire up Rybbit analytics.
+Smoke-test the Rybbit analytics API key against the configured Rybbit host. The full analytics integration is deferred to a later version.
 
-Status: **stub (v0.1)** — not yet implemented. See `SKILL.md`.
+Status: **v0.2** — smoke-test only (full integration deferred).

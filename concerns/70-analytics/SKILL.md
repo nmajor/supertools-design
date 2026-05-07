@@ -1,29 +1,42 @@
 # 70-analytics
 
-Wire up analytics.
-
-> **Status: stub — not implemented in v0.1.**
+Smoke-test the Rybbit analytics API key.
 
 ## What this concern handles
 
-Wires up Rybbit analytics.
+This v0.2 scope is intentionally narrow: confirm the Rybbit API key is recognized by the configured Rybbit host. The full analytics integration (event taxonomy, SDK setup, server-side tracking helpers) is not yet implemented and will be added in a later version.
 
-## v0.1 behavior
+## Prerequisites
 
-When invoked by `/supertools-design:bootstrap`:
+- The project's `.env` (or process env) must contain:
+  - `RYBBIT_API_KEY` (set by `00-prereqs`)
+  - `RYBBIT_HOST` (set by `00-prereqs`)
 
-1. Print `stub: 70-analytics — not implemented in v0.1`.
-2. Write `<project>/.supertools-state/70-analytics.json`:
-   ```json
-   {
-     "status": "stub",
-     "version": "0.1",
-     "timestamp": "<ISO8601 now>",
-     "summary": "stub: not implemented in v0.1"
-   }
-   ```
-3. Return without doing any real work.
+If either is missing, halt and tell the user which one.
 
-The verifier (`verify.mjs`) is a no-op stub that exits 0 — the receipt is the source of truth for v0.1.
+## Step 1: Run verifier
 
-See `docs/authoring-a-concern.md` for how this stub will be filled in.
+From `<project>/`:
+
+```bash
+node .supertools/concerns/70-analytics/verify.mjs
+```
+
+The script POSTs a benign event to `<RYBBIT_HOST>/api/track` and confirms the response is not `401` / `403`. Any other status (200, 4xx-with-validation-error, 5xx) means the API key was at least accepted by Rybbit's auth layer.
+
+## Step 2: Write the receipt
+
+Write `<project>/.supertools-state/70-analytics.json`:
+
+```json
+{
+  "status": "ok",
+  "version": "0.2",
+  "timestamp": "<ISO8601 now>",
+  "summary": "Rybbit API key smoke-tested OK against <RYBBIT_HOST>; full analytics integration deferred."
+}
+```
+
+## Idempotency
+
+The verifier is read-only-ish (POSTs a probe event with an intentionally-invalid `site_id` — Rybbit's handling of unknown sites determines whether the probe is recorded or dropped). It can be re-run any number of times.
