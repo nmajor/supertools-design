@@ -1,0 +1,12 @@
+{
+  "status": "not_started",
+  "revision": 0,
+  "approvedAt": null,
+  "latestNote": "",
+  "sourceSpecPaths": [
+    "design/product-plan",
+    "docs/00-product-spec.md",
+    ".supertools-state/ralph-requirements.json",
+    ".agent/DECISIONS.md"
+  ]
+}

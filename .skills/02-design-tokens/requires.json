@@ -1,0 +1,7 @@
+{
+  "name": "02-design-tokens",
+  "requires": ["01-project-init"],
+  "envRequired": [],
+  "cliRequired": ["node", "npm"],
+  "provides": ["design-tokens", "brand-fonts"]
+}

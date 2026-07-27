@@ -1,0 +1,7 @@
+{
+  "name": "16-ralph-build",
+  "requires": ["00-prereqs", "01-project-init", "14-ralph-harness", "15-ralph-plan"],
+  "envRequired": ["FAL_API_KEY", "OPENAI_API_KEY"],
+  "cliRequired": ["node", "git", "jq", "claude", "codex", "gemini", "npx"],
+  "provides": ["built-app", "live-deploy"]
+}

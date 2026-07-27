@@ -1,0 +1,7 @@
+{
+  "name": "07-email-mailboxes",
+  "requires": ["00-prereqs", "05-domain-dns"],
+  "envRequired": ["MXROUTE_SERVER", "MXROUTE_USERNAME", "MXROUTE_API_KEY", "CLOUDFLARE_API_TOKEN", "CLOUDFLARE_ACCOUNT_ID"],
+  "cliRequired": ["node"],
+  "provides": ["support-mailbox", "privacy-mailbox", "inbound-email-dns"]
+}

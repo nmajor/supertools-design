@@ -1,0 +1,7 @@
+{
+  "name": "09-forms",
+  "requires": ["00-prereqs", "01-project-init", "08-support-chat"],
+  "envRequired": ["CHATWOOT_HOST", "CHATWOOT_ACCESS_TOKEN", "CHATWOOT_ACCOUNT_ID"],
+  "cliRequired": ["node", "npx"],
+  "provides": ["contact-form-inbox", "privacy-form-inbox", "contact-api-route", "privacy-api-route"]
+}

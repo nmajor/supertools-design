@@ -1,0 +1,7 @@
+{
+  "name": "11-legal-pages",
+  "requires": ["00-prereqs", "01-project-init"],
+  "envRequired": [],
+  "cliRequired": ["node", "npx"],
+  "provides": ["terms-page", "privacy-page", "refund-page"]
+}

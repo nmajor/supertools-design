@@ -1,0 +1,7 @@
+{
+  "name": "17-launch-verify",
+  "requires": ["16-ralph-build"],
+  "envRequired": ["HEALTHCHECK_API_KEY", "HEALTHCHECK_HOST"],
+  "cliRequired": ["node"],
+  "provides": ["launch-report"]
+}

@@ -1,0 +1,7 @@
+{
+  "name": "10-analytics",
+  "requires": ["00-prereqs", "01-project-init", "04-logo"],
+  "envRequired": ["RYBBIT_HOST", "RYBBIT_API_KEY"],
+  "cliRequired": ["node", "npx"],
+  "provides": ["analytics-snippet", "event-taxonomy"]
+}

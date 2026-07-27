@@ -1,0 +1,8 @@
+{
+  "name": "_collab-review",
+  "kind": "meta-skill",
+  "requires": [],
+  "envRequired": [],
+  "cliRequired": ["node", "codex", "gemini"],
+  "provides": ["independent-quality-review"]
+}

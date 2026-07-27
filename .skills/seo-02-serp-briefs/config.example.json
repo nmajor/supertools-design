@@ -1,0 +1,26 @@
+{
+  "_comment": "EXAMPLE ONLY — this is the reference implementation's config (a wedding-aesthetic product). Copy to config.<yourProjectName>.json and replace every value. The loader prefers config.<projectName>.json and falls back to this file.",
+  "location_name": "United States",
+  "language_code": "en",
+  "topN": 20,
+  "serpDepth": 20,
+  "paaClickDepth": 2,
+  "crawlTopK": 8,
+  "crawlConcurrency": 3,
+  "crawlTimeoutMs": 30000,
+  "crawlPageTimeoutMs": 18000,
+  "perplexityModel": "sonar",
+  "maxMarkdownWordsPerPage": 1600,
+  "product": {
+    "name": "VeilBoard",
+    "what": "An AI wedding-aesthetic generator: a 60-second visual quiz returns a pack of six Pinterest-pinnable artifacts — a moodboard, color palette, floral direction, decor direction, invitation, and a style-summary card.",
+    "primary_cta": "Take the 60-second quiz",
+    "cta_url": "/quiz",
+    "brand_constraints": [
+      "Generated tiles never depict invented front-facing couples — faceless/cropped/detail imagery only.",
+      "Stay truthful to the aesthetics the product can actually generate (see docs/content-engine/style-taxonomy.md).",
+      "Tone: warm, tasteful, planner-savvy; never gimmicky or salesy.",
+      "The page must genuinely help even if the reader never buys (playbook §6.4 JTBD rule)."
+    ]
+  }
+}

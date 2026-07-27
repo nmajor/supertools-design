@@ -1,0 +1,9 @@
+{
+  "_comment": "seo-05-internal-links config. Maps each cluster to its real conversion target (the colors cluster anchors to the EXISTING palette tool, not a rebuilt generator page — see docs/seo/homepage-hub-linking.md). Other clusters fall back to the quiz. max_links caps the in-content related set per playbook §5.3 (3-8).",
+  "cluster_conversion": {
+    "colors": { "href": "/tools/wedding-color-palette-generator", "anchor": "Try the wedding color palette generator" },
+    "_default": { "href": "/quiz", "anchor": "Take the 60-second style quiz" }
+  },
+  "section_heading": "Keep planning",
+  "max_links": 6
+}

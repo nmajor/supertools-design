@@ -1,0 +1,92 @@
+{
+  "_comment": "Content-map config for VeilBoard. Drives deterministic clustering, funnel tagging, and cannibalization guards over seo-01's keyword-targets@1. Subject topics group pages into hub-and-spoke clusters; modifier sets supply spoke differentiators; format words drive funnel stage + template (NOT topic). Grounded in docs/research/content-architecture-clusters.md, content-funnel-mapping.md, content-cannibalization.md and docs/compact-keywords-guide.md.",
+
+  "site_origin": "https://veilboard.com",
+
+  "conversion": {
+    "_comment": "Global BOFU money pages a cluster funnels DOWN into when it has no in-cluster tool of its own.",
+    "quiz": { "label": "the 60-second quiz", "url": "/quiz" },
+    "palette_tool": { "label": "wedding color palette generator", "url": "/tools/wedding-color-palette-generator" }
+  },
+
+  "funnel_hubs": {
+    "_comment": "Navigational index views that slice the single corpus by funnel stage (the owner's TOFU/MOFU/BOFU hubs). Each lists the funnel-tagged pages across all clusters.",
+    "BOFU": { "path": "/tools", "label": "Wedding tools" },
+    "MOFU": { "path": "/guides", "label": "Wedding planning guides" },
+    "TOFU": { "path": "/inspiration", "label": "Wedding inspiration" }
+  },
+
+  "topics": [
+    { "id": "colors", "label": "Wedding colors & palettes", "slug": "wedding-colors",
+      "signal_tokens": ["color palette", "colour palette", "color scheme", "colour scheme", "color combination", "colour combination", "color", "colour", "palette", "swatch", "hue"],
+      "head_term": "wedding color palette", "conversion": "palette_tool",
+      "hub_type": "mixed" },
+    { "id": "moodboard", "label": "Wedding mood boards", "slug": "wedding-mood-board",
+      "signal_tokens": ["mood board", "moodboard", "mood-board", "vision board", "inspiration board", "inspo board"],
+      "head_term": "wedding mood board", "conversion": "quiz",
+      "hub_type": "mixed" },
+    { "id": "aesthetics", "label": "Wedding aesthetics, themes & styles", "slug": "wedding-aesthetic",
+      "signal_tokens": ["aesthetic", "theme", "vibe", "style", "look"],
+      "head_term": "wedding theme", "conversion": "quiz",
+      "hub_type": "editorial" },
+    { "id": "decor", "label": "Wedding decor", "slug": "wedding-decor",
+      "signal_tokens": ["decor", "decoration", "centerpiece", "centrepiece", "tablescape", "table setting", "table decor", "reception decor"],
+      "head_term": "wedding decor", "conversion": "quiz",
+      "hub_type": "editorial" },
+    { "id": "flowers", "label": "Wedding flowers", "slug": "wedding-flowers",
+      "signal_tokens": ["flower", "floral", "bouquet", "bloom", "centerpiece flower"],
+      "head_term": "wedding flowers", "conversion": "quiz",
+      "hub_type": "editorial" },
+    { "id": "invitations", "label": "Wedding invitations", "slug": "wedding-invitations",
+      "signal_tokens": ["invitation", "invite", "stationery", "stationary", "save the date", "save-the-date"],
+      "head_term": "wedding invitations", "conversion": "quiz",
+      "hub_type": "editorial" },
+    { "id": "attire", "label": "Wedding attire", "slug": "wedding-attire",
+      "signal_tokens": ["dress", "gown", "attire", "tux", "tuxedo", "suit", "veil"],
+      "head_term": "wedding dress style", "conversion": "quiz",
+      "hub_type": "editorial", "low_fit": true },
+    { "id": "cake", "label": "Wedding cakes", "slug": "wedding-cake",
+      "signal_tokens": ["cake", "dessert"],
+      "head_term": "wedding cake", "conversion": "quiz",
+      "hub_type": "editorial", "low_fit": true }
+  ],
+
+  "_comment_goalSynonyms": "Tokens that mean the same goal within a topic and must NOT split a page (palette==scheme==colors). They fold into the topic key so distinct-core_keyword same-intent collisions MERGE (cannibalization research §4). These are non-intent-changing.",
+  "goal_synonyms": {
+    "colors": ["palette", "scheme", "colors", "colours", "color combinations", "colour combinations", "color combos"],
+    "moodboard": ["mood board", "moodboard", "vision board", "inspiration board", "inspo board"],
+    "aesthetics": ["aesthetic", "theme", "style", "vibe", "look"]
+  },
+  "_comment_softModifiers": "Browse/awareness qualifiers that do NOT change intent (fold them — they don't make a new page). Per cannibalization research: ideas/inspiration/examples pull the same SERP.",
+  "soft_modifiers": ["ideas", "idea", "inspiration", "inspo", "examples", "example", "pictures", "photos", "list"],
+
+  "_comment_modifierSets": "Subject modifiers that DO change intent -> each makes a distinct spoke (VeilBoard's compact-page moat; protect from over-merge). Copied from seo-01 niche.veilboard.json modifierSets so the map and discovery agree. Longest match wins.",
+  "modifier_sets": {
+    "color": ["dusty blue", "sage green", "terracotta", "blush pink", "blush", "burgundy", "emerald green", "emerald", "champagne", "dusty rose", "mauve", "navy blue", "navy", "black and white", "rose gold", "gold", "lavender", "lilac", "sunset", "earth tone", "neutral", "pastel", "jewel tone", "forest green", "dusty pink", "ivory", "copper", "mustard", "coral", "peach"],
+    "season": ["spring", "summer", "fall", "autumn", "winter", "january", "february", "march", "april", "may", "june", "july", "august", "september", "october", "november", "december"],
+    "style": ["boho", "bohemian", "modern minimalist", "dark romantic", "moody romantic", "moody", "rustic barn", "rustic", "vintage", "romantic", "whimsical", "coastal", "beach", "art deco", "great gatsby", "fairycore", "cottagecore", "western", "parisian", "italian", "mediterranean", "bridgerton", "regency", "disco", "celestial", "english garden", "industrial", "scandinavian", "japandi", "tropical", "garden", "elegant", "luxury", "minimalist", "old money", "european", "fall", "autumn"],
+    "venue": ["garden", "barn", "vineyard", "beach", "ballroom", "courthouse", "estate", "greenhouse", "mountain", "rooftop", "backyard", "industrial", "destination", "chapel"]
+  },
+
+  "_comment_formatModifiers": "FORMAT words: they set funnel stage (BOFU) + template (tool), and are STRIPPED before topic matching so 'wedding style quiz' maps to the aesthetics SUBJECT, not a 'quiz' topic. A cluster's BOFU anchor is the in-cluster page carrying one of these (else the topic's global conversion page).",
+  "format_modifiers": ["generator", "maker", "creator", "builder", "tool", "app", "software", "template", "templates", "quiz", "online", "free"],
+
+  "_comment_funnelWords": "Funnel-stage pull lists for the classify cascade (funnel research §1.2/§7.1). BOFU/MOFU/TOFU.",
+  "funnel_words": {
+    "bofu": ["pricing", "price", "cost", "quote", "buy", "purchase", "order", "checkout", "trial", "demo", "sign up", "signup", "download", "generator", "maker", "creator", "builder", "tool", "app", "software", "near me", "vs", "versus", "alternative", "alternatives", "competitor", "review", "reviews", "worth it"],
+    "mofu": ["how to", "how do", "how can", "best", "top", "checklist", "template", "templates", "comparison", "which", "types of", "tips"],
+    "tofu": ["what is", "what are", "meaning", "definition", "ideas", "idea", "inspiration", "aesthetic", "trends", "trend", "history", "why", "explained", "101", "basics", "for beginners"]
+  },
+
+  "_comment_brandExclusions": "Competitor + off-product brand tokens. A target whose keyword contains one is QUARANTINED (never built, never an anchor) — we do not build pages for a rival's branded query and never anchor a cluster to one (the project's hard no-competitor rule). Aligned with _shared/competitors.mjs COMPETITOR_DOMAINS; multi-word forms used where a bare token would false-positive.",
+  "brand_exclusions": ["canva", "zola", "the knot", "theknot", "withjoy", "with joy", "joy wedding", "minted", "milanote", "mixboard", "weddingwire", "wedding wire", "hitched", "weddie", "nupt", "wedvis", "itsayes", "moodboardai", "davids bridal", "davidsbridal", "vistaprint", "shutterfly", "vogue", "demi lovato"],
+
+  "thresholds": {
+    "min_spokes_for_hub": 4,
+    "geo_min_spokes": 5,
+    "max_spokes_before_split": 30,
+    "sibling_links": 3,
+    "max_internal_links": 8,
+    "first_wave_clusters": 4
+  }
+}

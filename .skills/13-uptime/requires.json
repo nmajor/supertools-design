@@ -1,0 +1,7 @@
+{
+  "name": "13-uptime",
+  "requires": ["00-prereqs", "01-project-init"],
+  "envRequired": ["HEALTHCHECK_API_KEY", "HEALTHCHECK_HOST"],
+  "cliRequired": ["node", "npx"],
+  "provides": ["uptime-check", "health-route"]
+}

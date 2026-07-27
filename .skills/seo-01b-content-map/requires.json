@@ -1,0 +1,8 @@
+{
+  "requires": ["seo-01-keyword-discovery"],
+  "envRequired": [],
+  "envAnyOf": [],
+  "cliRequired": ["node"],
+  "provides": ["content-map"],
+  "notes": "Planning/architecture layer between seo-01 (keyword-targets@1) and seo-02 (serp-briefs). Deterministic + offline: turns the flat keyword list into a hub-and-spoke + funnel content map (clusters, funnel tags, internal-link graph, cannibalization guards, prioritized build queue) as content-map@1. No network, no API keys; pure function of the upstream artifact + the skill config. seo-02/04/05 consume the build queue, link graph, and URL plan."
+}

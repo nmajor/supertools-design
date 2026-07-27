@@ -1,7 +1,7 @@
 {
   "name": "supertools-design",
-  "description": "Opinionated post-Design-OS workflows: brand assets, tech-stack picks, API POCs, analytics, SEO scaffold, email, and a final Ralph-loop-ready PRD.",
-  "version": "0.1.0",
+  "description": "Council-reviewed bootstrap pipeline: Design OS plan + bare repo to a live, verified, SEO-ready app on Cloudflare Workers.",
+  "version": "0.3.0",
   "author": {
     "name": "Nick Major"
   },

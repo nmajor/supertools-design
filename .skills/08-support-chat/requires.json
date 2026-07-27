@@ -1,0 +1,7 @@
+{
+  "name": "08-support-chat",
+  "requires": ["00-prereqs", "05-domain-dns", "07-email-mailboxes"],
+  "envRequired": ["CHATWOOT_HOST", "CHATWOOT_PLATFORM_ACCESS_TOKEN", "CHATWOOT_ACCESS_TOKEN", "MXROUTE_SERVER", "MXROUTE_SUPPORT_PASSWORD", "MXROUTE_PRIVACY_PASSWORD"],
+  "cliRequired": ["node"],
+  "provides": ["chatwoot-account", "website-widget", "support-email-inbox", "privacy-email-inbox"]
+}

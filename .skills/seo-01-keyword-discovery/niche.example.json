@@ -1,0 +1,219 @@
+{
+  "_comment": "EXAMPLE ONLY — this is the reference implementation's niche (a wedding-aesthetic product). Copy to niche.<yourProjectName>.json and replace every value. The loader prefers niche.<projectName>.json and falls back to this file.",
+  "niche": "veilboard",
+  "product": "VeilBoard — AI wedding-aesthetic generator. 60-second visual quiz returns a pack of six Pinterest-pinnable artifacts (moodboard, palette, floral, decor, invitation, style-summary card). One-time $19 / $39.",
+  "audience": "Engaged person 22-38, heavy Pinterest wedding planner.",
+  "location_name": "United States",
+  "language_code": "en",
+  "_comment_seeds": "Head terms to expand via the DataForSEO suggestions + ideas endpoints. Keep broad; expansion finds the long tail.",
+  "seeds": [
+    "wedding mood board",
+    "wedding moodboard",
+    "wedding color palette",
+    "wedding color scheme",
+    "wedding vision board",
+    "wedding aesthetic",
+    "wedding style quiz",
+    "wedding theme ideas",
+    "wedding inspiration board",
+    "bridal aesthetic"
+  ],
+  "_comment_expandSeeds": "Subset of seeds to actually expand via the API (cost control). The rest still enter the pool as raw candidates.",
+  "expandSeeds": [
+    "wedding mood board",
+    "wedding color palette",
+    "wedding vision board",
+    "wedding aesthetic",
+    "wedding style quiz"
+  ],
+  "_comment_patterns": "Synthetic modifier-stacking per the playbook (Appendix A). Each {m} is filled from the named modifier set; candidates are validated against real search volume during enrichment.",
+  "patterns": [
+    {
+      "template": "{m} wedding mood board",
+      "modifiers": "style"
+    },
+    {
+      "template": "{m} wedding moodboard",
+      "modifiers": "style"
+    },
+    {
+      "template": "{m} wedding theme",
+      "modifiers": "style"
+    },
+    {
+      "template": "{m} wedding aesthetic",
+      "modifiers": "style"
+    },
+    {
+      "template": "{m} wedding inspiration",
+      "modifiers": "style"
+    },
+    {
+      "template": "{m} wedding ideas",
+      "modifiers": "style"
+    },
+    {
+      "template": "{m} wedding color palette",
+      "modifiers": "color"
+    },
+    {
+      "template": "{m} wedding color scheme",
+      "modifiers": "color"
+    },
+    {
+      "template": "{m} wedding colors",
+      "modifiers": "color"
+    },
+    {
+      "template": "{m} wedding color palette",
+      "modifiers": "season"
+    },
+    {
+      "template": "{m} wedding ideas",
+      "modifiers": "venue"
+    },
+    {
+      "template": "{m} wedding decor",
+      "modifiers": "venue"
+    }
+  ],
+  "_comment_modifierSets": "Drawn from docs/content-engine/style-taxonomy.md so the discovered keywords map onto aesthetics the product can actually generate.",
+  "modifierSets": {
+    "style": [
+      "boho",
+      "bohemian",
+      "modern minimalist",
+      "dark romantic",
+      "moody",
+      "rustic",
+      "vintage",
+      "romantic",
+      "whimsical",
+      "coastal",
+      "beach",
+      "art deco",
+      "great gatsby",
+      "fairycore",
+      "cottagecore",
+      "western",
+      "parisian",
+      "italian",
+      "mediterranean",
+      "bridgerton",
+      "regency",
+      "disco",
+      "celestial",
+      "english garden",
+      "industrial",
+      "scandinavian",
+      "japandi",
+      "tropical",
+      "garden",
+      "elegant",
+      "luxury",
+      "minimalist",
+      "fall",
+      "autumn",
+      "moody romantic",
+      "old money",
+      "european"
+    ],
+    "color": [
+      "dusty blue",
+      "sage green",
+      "terracotta",
+      "blush",
+      "blush pink",
+      "burgundy",
+      "emerald",
+      "emerald green",
+      "champagne",
+      "dusty rose",
+      "mauve",
+      "navy",
+      "navy blue",
+      "black and white",
+      "gold",
+      "rose gold",
+      "lavender",
+      "lilac",
+      "sunset",
+      "earth tone",
+      "neutral",
+      "pastel",
+      "jewel tone",
+      "forest green",
+      "dusty pink",
+      "ivory",
+      "copper",
+      "mustard",
+      "coral",
+      "peach"
+    ],
+    "season": [
+      "spring",
+      "summer",
+      "fall",
+      "autumn",
+      "winter"
+    ],
+    "venue": [
+      "garden",
+      "barn",
+      "vineyard",
+      "beach",
+      "ballroom",
+      "courthouse",
+      "estate",
+      "greenhouse",
+      "mountain",
+      "rooftop",
+      "backyard",
+      "industrial",
+      "destination",
+      "chapel",
+      "rustic barn"
+    ]
+  },
+  "_comment_jtbd": "Jobs-to-be-done queries the quiz/pack answers directly. These are the highest-fit BOFU for a generator product even when DataForSEO labels them 'informational'.",
+  "jtbd": [
+    "how to make a wedding mood board",
+    "how to create a wedding mood board",
+    "how to choose wedding colors",
+    "how to pick wedding colors",
+    "how to find your wedding style",
+    "how to choose a wedding theme",
+    "what is my wedding aesthetic",
+    "what is my wedding style",
+    "how to make a wedding vision board",
+    "how to build a wedding color palette",
+    "how to choose your wedding aesthetic",
+    "wedding color palette generator",
+    "wedding mood board maker",
+    "wedding mood board template",
+    "wedding aesthetic quiz",
+    "wedding vibe quiz"
+  ],
+  "_comment_competitors": "Adjacent tools / where the audience currently assembles wedding aesthetics. Comparison + alternative angles.",
+  "competitors": [
+    "canva wedding mood board",
+    "pinterest wedding board",
+    "the knot wedding vision",
+    "zola wedding",
+    "joy wedding website",
+    "wedding mood board app",
+    "wedding mood board template canva"
+  ],
+  "_comment_serpSeeds": "Seeds to SERP-harvest (People Also Ask + Related Searches) for additional real-world candidates.",
+  "serpSeeds": [
+    "wedding mood board",
+    "wedding color palette",
+    "what is my wedding aesthetic"
+  ],
+  "limits": {
+    "suggestionLimit": 150,
+    "ideaLimit": 120,
+    "maxCandidates": 1400,
+    "overviewBatch": 700
+  }
+}

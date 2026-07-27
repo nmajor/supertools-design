@@ -1,0 +1,11 @@
+{
+  "requires": [],
+  "envRequired": [],
+  "envAnyOf": [
+    ["DATAFORSEO_MCP_URL"],
+    ["DATAFORSEO_USERNAME", "DATAFORSEO_PASSWORD"]
+  ],
+  "cliRequired": ["node"],
+  "provides": ["keyword-targets"],
+  "notes": "Standalone growth-tooling skill (not part of the 00-17 build pipeline). Needs a DataForSEO transport: the local MCP server (DATAFORSEO_MCP_URL, preferred) or REST basic-auth (DATAFORSEO_USERNAME + DATAFORSEO_PASSWORD). Reads a niche profile; writes a ranked keyword report. Idempotent and disk-cached."
+}

@@ -1,0 +1,9 @@
+{
+  "requires": ["seo-02-serp-briefs"],
+  "consumes": ["page-briefs"],
+  "provides": ["page-images"],
+  "envRequired": ["OPENAI_API_KEY", "FAL_API_KEY"],
+  "cliRequired": ["node"],
+  "mutatesApp": true,
+  "notes": "Generates photorealistic FLUX.2 [pro] images (hero mood-board flat-lay + supporting details, reference-conditioned for consistency) to public/img/guides/<slug>/ as optimized WebP. Positive-only prompts (no people/text via composition). Provides page-images@1 for seo-04-page-build."
+}

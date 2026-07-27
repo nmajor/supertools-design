@@ -1,0 +1,10 @@
+{
+  "requires": ["seo-01-keyword-discovery", "seo-01b-content-map"],
+  "consumes": ["keyword-targets", "content-map"],
+  "provides": ["page-briefs"],
+  "envRequired": ["PERPLEXITY_API_KEY", "OPENAI_API_KEY"],
+  "envAnyOf": [["DATAFORSEO_MCP_URL"], ["DATAFORSEO_USERNAME", "DATAFORSEO_PASSWORD"]],
+  "serviceRequired": ["CRAWL4AI_URL (default http://localhost:11235)"],
+  "cliRequired": ["node"],
+  "notes": "Research-grade brief builder. PREFERS seo-01b's content-map@1 for selection/order/enrichment (build_queue, deduped pages, first_wave); falls back to seo-01's keyword-targets@1 flat order when the map is absent (still reads it for pillar back-fill). Captures full SERP (DataForSEO), crawls top-K bodies (Crawl4AI), runs PAA-gap + Perplexity differentiation, emits page-briefs@1. --dry-run prints the plan with no API calls. Idempotent + disk-cached."
+}

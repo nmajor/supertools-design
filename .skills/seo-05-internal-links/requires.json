@@ -1,0 +1,9 @@
+{
+  "requires": ["seo-01b-content-map", "seo-04-page-build"],
+  "consumes": ["content-map", "compact-pages"],
+  "provides": ["internal-links"],
+  "envRequired": [],
+  "envAnyOf": [],
+  "cliRequired": ["node"],
+  "notes": "Post-processor: injects the content-map link graph into the BUILT guide pages (hub<->spoke, siblings, ->conversion) as an in-content 'Keep planning' section. Deterministic + offline + idempotent (marker-delimited). Run after seo-04. Links only to built routes; colors cluster anchors to the existing palette tool, else the quiz."
+}

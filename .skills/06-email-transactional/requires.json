@@ -1,0 +1,7 @@
+{
+  "name": "06-email-transactional",
+  "requires": ["00-prereqs", "05-domain-dns"],
+  "envRequired": ["AHASEND_API_KEY", "AHASEND_ACCOUNT_ID", "CLOUDFLARE_API_TOKEN", "CLOUDFLARE_ACCOUNT_ID"],
+  "cliRequired": ["node"],
+  "provides": ["transactional-email", "ahasend-from-address", "ahasend-send-api-key"]
+}

@@ -1,0 +1,7 @@
+{
+  "name": "15-ralph-plan",
+  "requires": ["00-prereqs", "01-project-init", "14-ralph-harness"],
+  "envRequired": [],
+  "cliRequired": ["node", "git", "jq", "claude", "codex", "gemini"],
+  "provides": ["approved-plan", "tasks.json"]
+}

@@ -1,0 +1,37 @@
+{
+  "name": "00-prereqs",
+  "requires": [],
+  "envRequired": [
+    "CLOUDFLARE_ACCOUNT_ID",
+    "CLOUDFLARE_API_TOKEN",
+    "AHASEND_ACCOUNT_ID",
+    "AHASEND_SECRET_KEY",
+    "POLAR_SANDBOX_ACCESS_TOKEN",
+    "OPENROUTER_API_KEY",
+    "DATAFORSEO_USERNAME",
+    "DATAFORSEO_PASSWORD",
+    "RYBBIT_API_KEY",
+    "RYBBIT_HOST",
+    "HEALTHCHECK_API_KEY",
+    "HEALTHCHECK_HOST",
+    "MXROUTE_SERVER",
+    "MXROUTE_USERNAME",
+    "MXROUTE_API_KEY",
+    "CHATWOOT_PLATFORM_ACCESS_TOKEN",
+    "CHATWOOT_ACCESS_TOKEN",
+    "CHATWOOT_HOST"
+  ],
+  "envOptional": [
+    "CLOUDFLARE_SITES_ACCOUNT_ID",
+    "CLOUDFLARE_SITES_API_TOKEN",
+    "CLOUDFLARE_SITES_R2_ACCESS_KEY_ID",
+    "CLOUDFLARE_SITES_R2_SECRET_ACCESS_KEY",
+    "CLOUDFLARE_SITES_R2_S3_API_ENDPOINT",
+    "FIREWORKS_API_KEY",
+    "OPENAI_API_KEY",
+    "PORKBUN_API_KEY",
+    "PORKBUN_SECRET_KEY"
+  ],
+  "cliRequired": ["node", "npm", "npx", "claude", "codex", "gemini"],
+  "provides": ["prereqs"]
+}

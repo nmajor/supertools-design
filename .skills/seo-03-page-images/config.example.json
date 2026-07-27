@@ -1,0 +1,36 @@
+{
+  "_comment": "EXAMPLE ONLY — this is the reference implementation's config (a wedding-aesthetic product). Copy to config.<yourProjectName>.json and replace every value. The loader prefers config.<projectName>.json and falls back to this file.",
+  "out_dir": "public/img/guides",
+  "public_base": "/img/guides",
+  "max_width": 1400,
+  "webp_quality": 80,
+  "images_per_page": 3,
+  "org": {
+    "name": "VeilBoard",
+    "url": "https://veilboard.com"
+  },
+  "site_origin": "https://veilboard.com",
+  "license_url": "https://veilboard.com/terms",
+  "style_vocab": {
+    "media": [
+      "Portra 400 film",
+      "Hasselblad medium format digital",
+      "Cinestill 800T",
+      "large-format 4x5 film"
+    ],
+    "lighting": [
+      "soft diffused north-window light",
+      "golden hour rim light",
+      "candlelit warm tungsten",
+      "overcast soft daylight"
+    ],
+    "refs": [
+      "Jose Villa",
+      "Erich McVey",
+      "KT Merry",
+      "Greg Finck"
+    ],
+    "anti_slop": "35mm film grain, subtle halation, shallow depth of field, paper-fiber and fabric-weave texture, natural petal wilt, faint vignette, true-to-life muted color, lived-in imperfection"
+  },
+  "_notes": "FLUX.2 [pro] ignores negative prompts (CFG=1) — we express no-people/no-text POSITIVELY via flat-lay/objects-only composition, never an avoid block (per docs/research/image-gen-photoreal.md). Anti-slop terms replace '8k/masterpiece/flawless', which cause the waxy AI look."
+}

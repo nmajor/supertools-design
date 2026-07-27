@@ -1,0 +1,7 @@
+{
+  "name": "04-logo",
+  "requires": ["03-shell"],
+  "envRequired": [],
+  "cliRequired": ["node", "npm", "claude"],
+  "provides": ["logo-svg", "logo-mark-svg", "favicon-svg", "favicon-ico", "apple-touch-icon", "og-image"]
+}

@@ -1,0 +1,8 @@
+{
+  "name": "01-project-init",
+  "requires": ["prereqs"],
+  "envRequired": [],
+  "envOptional": [],
+  "cliRequired": ["node", "npm", "npx", "rsync", "bash", "git"],
+  "provides": ["tanstack-scaffold", "app-runnable-local"]
+}

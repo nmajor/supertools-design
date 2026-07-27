@@ -3,3 +3,21 @@
 *.swp
 *.swo
 .idea/
+
+# Secrets — never commit
+.env
+.env.*
+!.env.example
+.dev.vars
+
+# Per-project skill state / receipts (belongs in the consuming project)
+.supertools-state/
+
+# Per-project skill configs resolved by _shared/project.mjs
+# (config.example.json / niche.example.json ARE tracked)
+.skills/**/config.*.json
+!.skills/**/config.example.json
+.skills/**/niche.*.json
+!.skills/**/niche.example.json
+
+node_modules/

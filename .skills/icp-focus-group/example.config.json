@@ -1,0 +1,11 @@
+{
+  "topic": "VeilBoard — a free Wedding Color Palette Generator that shows a chosen palette applied onto real photos of bridesmaid dresses, groomsmen, a bridal bouquet, and a reception table, and lets you re-assign which color goes on each element.",
+  "images": [],
+  "persona": "A 28-year-old woman who just got engaged and is planning her wedding. Heavy Pinterest user, has made mood boards, follows wedding accounts, but is NOT a designer and doesn't know color theory. Budget-aware and a bit skeptical of gimmicky tools.",
+  "questions": [
+    { "id": "useful", "text": "How useful is this for planning your wedding?", "scale": "1-10 (1 = useless, 10 = would use daily)" },
+    { "id": "vs_alts", "text": "How much better is this than Pinterest, Coolors-type swatch generators, or The Knot's palette galleries?", "scale": "1-5 (1 = worse, 3 = about the same, 5 = clearly better)" },
+    { "id": "share", "text": "How likely are you to share what you make with your bridesmaids / fiancé / florist?", "scale": "1-10 (1 = never, 10 = definitely)" }
+  ],
+  "panelistPersonas": {}
+}

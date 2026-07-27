@@ -1,0 +1,7 @@
+{
+  "name": "03-shell",
+  "requires": ["02-design-tokens"],
+  "envRequired": [],
+  "cliRequired": ["node", "npm"],
+  "provides": ["app-shell", "main-nav", "user-menu", "footer"]
+}

@@ -1,0 +1,9 @@
+{
+  "requires": ["seo-02-serp-briefs", "seo-03-page-images"],
+  "consumes": ["page-briefs", "page-images"],
+  "provides": ["compact-pages"],
+  "envRequired": ["OPENAI_API_KEY"],
+  "cliRequired": ["node"],
+  "mutatesApp": true,
+  "notes": "Generates a build-safe TanStack route from the seo-02 brief + seo-03 images. Staged LLM chain emits sanitized content only; a deterministic template renders the TSX + hero/inline images + HowTo/FAQ/ImageObject JSON-LD + quiz CTA. page-images is optional (page builds without images if absent). Writes src/routes/guides/<slug>.tsx + the compact-pages@1 registry."
+}

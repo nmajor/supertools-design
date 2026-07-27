@@ -1,0 +1,7 @@
+{
+  "name": "12-payments",
+  "requires": ["00-prereqs", "05-domain-dns"],
+  "envRequired": ["POLAR_SANDBOX_ACCESS_TOKEN"],
+  "cliRequired": ["node"],
+  "provides": ["polar-products", "polar-webhook-endpoint"]
+}
