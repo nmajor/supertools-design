@@ -78,29 +78,20 @@ function AppShellWrapper({ children }: { children: React.ReactNode }) {
 }
 `;
 
-// Typography is skill 02's to own. This skill rewrites styles.css to drop the
-// scaffold's demo CSS, so it must carry the font @import and @theme block
-// across — but it reads them out of what 02 already wrote rather than
-// declaring its own copy. Two copies of a brand constant is how they drift.
-function stylesPrefix({ fontsImport, theme }) {
-  const imports = [
-    fontsImport,                       // '' when the design system has no webfonts
-    '@import "tailwindcss";',
-    '@plugin "@tailwindcss/typography";',
-  ].filter(Boolean).join('\n');
-  return `${imports}\n\n${theme}\n\n${MINIMAL_RESET}`;
+// This skill holds NO design opinions. It rewrites styles.css only to drop the
+// scaffold's demo CSS, and everything it keeps is transcribed from what is
+// already in the file — the @import/@plugin directives 01 and 02 established,
+// and skill 02's @theme block. It declares nothing of its own.
+//
+// There used to be a "minimal reset" here (box-sizing, body margin,
+// -webkit-font-smoothing: antialiased). That was a design opinion: font
+// smoothing changes how text looks, and the rest was already handled twice
+// over — Tailwind 4's preflight does box-sizing and body margin, and the
+// exported AppShell manages its own viewport height. Deleted rather than
+// made configurable.
+function stylesPrefix({ directives, theme }) {
+  return `${directives.join('\n')}\n\n${theme}\n`;
 }
-
-const MINIMAL_RESET = `/* minimal reset */
-* { box-sizing: border-box; }
-html, body, #app { min-height: 100%; }
-body {
-  margin: 0;
-  -webkit-font-smoothing: antialiased;
-  -moz-osx-font-smoothing: grayscale;
-}
-
-`;
 
 const log = (...a) => console.log(...a);
 const die = (m) => { console.error(m); process.exit(1); };
@@ -174,16 +165,21 @@ async function rewriteStylesCss() {
   if (!themeMatch) {
     die('No @theme block in src/styles.css — skill 02-design-tokens owns typography; run it first.');
   }
-  const importMatch = before.match(/@import\s+url\("https:\/\/fonts\.googleapis\.com[^"]*"\)\s*;/);
-  const fontsImport = importMatch ? importMatch[0] : '';
-  log(fontsImport
-    ? '  carrying skill 02 webfont @import + @theme across'
-    : '  carrying skill 02 @theme across (no webfont @import — the design system declares none)');
 
-  const next = stylesPrefix({ fontsImport, theme: themeMatch[0] }) + tokensBlock + '\n';
+  // Transcribe every @import / @plugin directive already in the file, in
+  // order, rather than asserting a list. Whatever 01 scaffolded and 02 wrote
+  // (the webfont sheet, "tailwindcss", the typography plugin) is preserved
+  // exactly; this skill does not decide which plugins a project has.
+  const directives = [...before.matchAll(/^\s*@(?:import|plugin)\s+[^;]+;/gm)].map((m) => m[0].trim());
+  if (!directives.some((d) => /@import\s+"tailwindcss"/.test(d))) {
+    die('No `@import "tailwindcss";` in src/styles.css — the scaffold is not in the expected state; run skill 01 first.');
+  }
+  log(`  carrying ${directives.length} @import/@plugin directive(s) + skill 02's @theme across`);
+
+  const next = stylesPrefix({ directives, theme: themeMatch[0] }) + '\n' + tokensBlock + '\n';
   await fs.writeFile(STYLES_PATH, next);
   log(`  rewrote src/styles.css (${before.length} → ${next.length} bytes)`);
-  return { fontsImport: fontsImport || null, theme: themeMatch[0] };
+  return { directives, theme: themeMatch[0] };
 }
 
 async function main() {

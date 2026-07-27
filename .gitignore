@@ -21,3 +21,4 @@
 !.skills/**/niche.example.json
 
 node_modules/
+.omc/
