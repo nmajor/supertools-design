@@ -1,11 +1,12 @@
 {
   "name": "00-prereqs",
+  "_comment_ahasend": "AHASEND_SECRET_KEY here vs AHASEND_API_KEY in 06-email-transactional is DELIBERATE, not a bug. SECRET_KEY is the name in .env; _shared/env.mjs loadEnv() aliases it to AHASEND_API_KEY for the client and for 06. Do not unify the spellings.",
   "requires": [],
   "envRequired": [
     "CLOUDFLARE_ACCOUNT_ID",
     "CLOUDFLARE_API_TOKEN",
     "AHASEND_ACCOUNT_ID",
-    "AHASEND_API_KEY",
+    "AHASEND_SECRET_KEY",
     "POLAR_SANDBOX_ACCESS_TOKEN",
     "OPENROUTER_API_KEY",
     "DATAFORSEO_USERNAME",

@@ -1,5 +1,6 @@
 {
   "name": "06-email-transactional",
+  "_comment_ahasend": "AHASEND_API_KEY is set by _shared/env.mjs loadEnv(), which aliases it from AHASEND_SECRET_KEY in .env (the name 00-prereqs requires). Both spellings are intentional; do not unify them.",
   "requires": ["00-prereqs", "05-domain-dns"],
   "envRequired": ["AHASEND_API_KEY", "AHASEND_ACCOUNT_ID", "CLOUDFLARE_API_TOKEN", "CLOUDFLARE_ACCOUNT_ID"],
   "cliRequired": ["node"],

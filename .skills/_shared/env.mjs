@@ -48,16 +48,14 @@ export function loadEnv() {
     if (process.env[key]) continue;
     process.env[key] = raw.replace(/^["']|["']$/g, '');
   }
-  // AHASEND_API_KEY is the canonical name (it is what every skill and
-  // requires.json asks for); AHASEND_SECRET_KEY is the legacy spelling still
-  // found in older .env files. Alias BOTH ways so a project that set either
-  // one satisfies every skill — the two names previously disagreed between
-  // 00-prereqs and 06-email-transactional.
+  // Aliases used by code lifted from supertools-design.
+  // DELIBERATE, NOT AN INCONSISTENCY: AHASEND_SECRET_KEY is the name in .env
+  // (00-prereqs/requires.json asks for it); AHASEND_API_KEY is the name the
+  // Ahasend client and 06-email-transactional expect. This line is the bridge.
+  // Do not "unify" the two spellings — that breaks either this alias or the
+  // existing .env files across projects that already use SECRET_KEY.
   if (process.env.AHASEND_SECRET_KEY && !process.env.AHASEND_API_KEY) {
     process.env.AHASEND_API_KEY = process.env.AHASEND_SECRET_KEY;
-  }
-  if (process.env.AHASEND_API_KEY && !process.env.AHASEND_SECRET_KEY) {
-    process.env.AHASEND_SECRET_KEY = process.env.AHASEND_API_KEY;
   }
 }
 
