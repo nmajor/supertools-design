@@ -1,6 +1,13 @@
 #!/usr/bin/env node
 // 04-logo setup.
 // Generate the brand SVG wordmark + favicon set; patch __root.tsx head.
+//
+// EVERY brand value here comes from the project: colours and type from the
+// Design OS export (design/product-plan/design-system/), name/domain/tagline
+// from .supertools-state/project.json. Nothing in this file names a colour,
+// a typeface, or a product. An earlier version hardcoded the reference
+// implementation's rose/stone palette, Fraunces, and its wedding tagline, so
+// every project shipped that brand's assets under its own name.
 
 import fs from 'node:fs/promises';
 import path from 'node:path';
@@ -8,8 +15,14 @@ import { spawnSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 import { loadEnv, PROJECT_ROOT } from '../_shared/env.mjs';
 import { readProject } from '../_shared/project.mjs';
+import {
+  requireExport, palette, parseTokens, fontFamilies, primaryFamilyName,
+  perFamilyFontUrls, paletteFamilyNames, productDescription, EXPORT_DIR,
+} from '../_shared/design-os.mjs';
 
-const BRAND_NAME = readProject().brandName;
+const PROJECT    = readProject();
+const BRAND_NAME = PROJECT.brandName;
+const DOMAIN     = PROJECT.domain || null;
 
 const STATE_SUB   = path.join(PROJECT_ROOT, '.supertools-state', '04-logo');
 const SVG_DUMP    = path.join(STATE_SUB, 'svg-sources');
@@ -23,48 +36,78 @@ const PROMPT_FILE  = path.join(SKILL_DIR, 'mark-generation-prompt.md');
 const BRAND_DIR    = path.join(PROJECT_ROOT, 'design', 'brand');
 const PRODUCT_OVERVIEW_FILE = path.join(PROJECT_ROOT, 'design', 'product-plan', 'product-overview.md');
 
-// Brand tokens
-const ROSE_900  = '#881337';
-const STONE_50  = '#fafaf9';
-const STONE_600 = '#57534e';
-
-const PRODUCT_DESCRIPTION =
-  'A 60-second visual quiz becomes a pack of six Pinterest-pinnable wedding artifacts. No subscription.';
-
 const log = (...a) => console.log(...a);
 const die = (m) => { console.error(m); process.exit(1); };
 
-// Shared mark inner content (occupies 60×56 starting at 0,0). Hosts
-// (wordmark, OG, etc.) embed it inside their own transforms and backplates.
+// ── Brand values, resolved from the Design OS export ────────────────────────
+// Resolved once at module load so every asset draws from the same source.
+// `primary` is required (00-prereqs gates on it). Where a role the export does
+// not define is genuinely needed to draw anything at all, the substitute is a
+// PLAIN NEUTRAL (white / near-black), never another project's brand colour.
+const TOKENS   = parseTokens();
+const P        = palette(TOKENS);
+const FAMILIES = fontFamilies(TOKENS);
+
+const BRAND = {
+  primary:   P.primary,
+  secondary: P.secondary || P.primary,
+  neutral:   P.neutral   || '#52525b',
+  surface:   P.surface   || '#ffffff',
+  ink:       P.ink       || '#18181b',
+  headingFont: FAMILIES.heading || FAMILIES.body || 'system-ui, sans-serif',
+  bodyFont:    FAMILIES.body    || FAMILIES.heading || 'system-ui, sans-serif',
+};
+
+// XML-escape any project string before it goes into an SVG.
+function xml(s) {
+  return String(s ?? '')
+    .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;').replace(/'/g, '&apos;');
+}
+
+// A font-family attribute value: SVG wants an unquoted, comma-separated list.
+function svgFontFamily(stack) {
+  return xml(String(stack).replace(/['"]/g, ''));
+}
+
+// Shared mark inner content (occupies 60×60 starting at 0,0). Hosts (wordmark,
+// OG card, favicon) embed it inside their own transforms and backplates.
+//
+// The shape is deliberately GENERIC: two offset rounded squares reading as
+// "layers". It is a neutral placeholder that claims nothing about the product,
+// and it is only ever used when the project supplies no design/brand/*.svg and
+// the LLM path produces nothing. Say so in the receipt (markSource) rather
+// than letting it pass as a designed mark.
 function markInnerSvg(opts = {}) {
   const indent = opts.indent || '    ';
   return [
-    `${indent}<rect x="0"  y="0"  width="18" height="26" rx="2" fill="#e7e5e4"/>`,
-    `${indent}<rect x="21" y="0"  width="18" height="26" rx="2" fill="#fecdd3"/>`,
-    `${indent}<rect x="42" y="0"  width="18" height="26" rx="2" fill="#e7e5e4"/>`,
-    `${indent}<rect x="0"  y="30" width="18" height="26" rx="2" fill="#fda4af"/>`,
-    `${indent}<rect x="21" y="30" width="18" height="26" rx="2" fill="#${ROSE_900.slice(1)}"/>`,
-    `${indent}<rect x="42" y="30" width="18" height="26" rx="2" fill="#e7e5e4"/>`,
+    `${indent}<rect x="2"  y="2"  width="34" height="34" rx="8" fill="${BRAND.primary}"/>`,
+    `${indent}<rect x="24" y="24" width="34" height="34" rx="8" fill="${BRAND.secondary}" fill-opacity="0.85"/>`,
   ].join('\n');
 }
 
+// The wordmark canvas has to fit the brand name — a fixed 320×96 canvas
+// clipped anything longer than ~9 characters. Estimate the advance width of
+// the name at the chosen size and size the viewBox to it.
+const WORDMARK_FONT_SIZE = 44;
+function wordmarkWidth() {
+  const textWidth = Math.ceil(BRAND_NAME.length * WORDMARK_FONT_SIZE * 0.58);
+  return Math.max(320, 88 + textWidth + 24);
+}
+
 function fallbackWordmarkSvg() {
-  // Unified: mark in 72×68 rounded backplate (6px padding around the 60×56
-  // mark inner) + the Fraunces italic brand name. The padding math matters —
-  // NOTE: the 320×96 canvas is tuned for a ~9-character brand name. Longer
-  // names need a wider viewBox; the vision check below catches clipping.
-  // the previous version had backplate width=68 with the mark extending to
-  // x=74, so the mark visibly stuck out the right side. Vision check now
-  // catches that class of bug; this math fixes the immediate instance.
-  return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 320 96" width="320" height="96">
-  <rect x="0" y="14" width="72" height="68" rx="14" fill="${STONE_50}"/>
-  <g transform="translate(6, 20)">
+  // Mark in a 72×72 rounded backplate (6px padding around the 60×60 mark
+  // inner) + the brand name in the export's heading face and primary colour.
+  const w = wordmarkWidth();
+  return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${w} 96" width="${w}" height="96">
+  <rect x="0" y="12" width="72" height="72" rx="14" fill="${BRAND.surface}"/>
+  <g transform="translate(6, 18)">
 ${markInnerSvg()}
   </g>
-  <text x="84" y="64" text-anchor="start"
-        font-family="Fraunces, Georgia, serif"
-        font-style="italic" font-weight="600" font-size="44"
-        fill="${ROSE_900}">${BRAND_NAME}</text>
+  <text x="88" y="63" text-anchor="start"
+        font-family="${svgFontFamily(BRAND.headingFont)}"
+        font-weight="600" font-size="${WORDMARK_FONT_SIZE}"
+        fill="${BRAND.primary}">${xml(BRAND_NAME)}</text>
 </svg>
 `;
 }
@@ -88,23 +131,21 @@ async function svgWordmarkResolved() {
 // Mark generation strategy (in order):
 //   1. design/brand/logo-mark.svg if present (project override — hand-crafted)
 //   2. claude -p with mark-generation-prompt.md (LLM, palette + concept aware)
-//   3. fallbackMarkSvg() — generic pack-grid template adapted to the palette
+//   3. fallbackMarkSvg() — the neutral placeholder below
 //
 // Each strategy is tried in order; first to produce valid SVG wins.
 
 function fallbackMarkSvg() {
-  // Generic "pack-of-6" grid: 6 mini-cards in 3x2 layout, center-bottom
-  // card in primary-900 to suggest "your chosen direction." Works as a
-  // neutral default for any project — content products especially.
+  // Deliberately generic placeholder, not a designed mark: two offset rounded
+  // squares in the project's own primary/secondary. It says nothing about the
+  // product because this skill knows nothing about the product's imagery — a
+  // shape that DID mean something would mean the previous project's thing.
+  // The receipt records markSource: "fallback-template" so this is never
+  // mistaken for a considered design.
   return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 96 96" width="96" height="96">
-  <rect width="96" height="96" rx="18" fill="${STONE_50}"/>
-  <g transform="translate(18, 20)">
-    <rect x="0"  y="0"  width="18" height="26" rx="2" fill="#e7e5e4"/>
-    <rect x="21" y="0"  width="18" height="26" rx="2" fill="#fecdd3"/>
-    <rect x="42" y="0"  width="18" height="26" rx="2" fill="#e7e5e4"/>
-    <rect x="0"  y="30" width="18" height="26" rx="2" fill="#fda4af"/>
-    <rect x="21" y="30" width="18" height="26" rx="2" fill="#${ROSE_900.slice(1)}"/>
-    <rect x="42" y="30" width="18" height="26" rx="2" fill="#e7e5e4"/>
+  <rect width="96" height="96" rx="18" fill="${BRAND.surface}"/>
+  <g transform="translate(18, 18)">
+${markInnerSvg()}
   </g>
 </svg>
 `;
@@ -142,16 +183,23 @@ async function generateMarkViaClaude() {
   try { overview = (await fs.readFile(PRODUCT_OVERVIEW_FILE, 'utf-8')).slice(0, 2000); }
   catch { log('  product-overview.md not found; skipping LLM generation'); return null; }
 
-  const productName = path.basename(PROJECT_ROOT);
-  const palette = [STONE_50, '#e7e5e4', '#fecdd3', '#fda4af', ROSE_900, STONE_600, '#a7f3d0', '#047857'];
+  // Palette family NAMES come from the export's tailwind-colors.md when it
+  // records them ("indigo" / "cyan" / "zinc"); otherwise the model is given
+  // the hexes alone rather than a colour word from somewhere else.
+  const familyNames = paletteFamilyNames();
+  // Every colour the design system declares, deduped, so the model cannot
+  // invent one that clashes with the rest of the brand.
+  const hexes = [...new Set(
+    [...TOKENS.values()].filter((v) => /^#[0-9a-f]{3,8}$/i.test(v.trim())).map((v) => v.trim())
+  )];
 
   prompt = prompt
-    .replace('{{PRODUCT_NAME}}', productName)
+    .replace('{{PRODUCT_NAME}}', BRAND_NAME)
     .replace('{{PRODUCT_OVERVIEW}}', overview)
-    .replace('{{PRIMARY_FAMILY}}', 'rose')
-    .replace('{{SECONDARY_FAMILY}}', 'emerald')
-    .replace('{{NEUTRAL_FAMILY}}', 'stone')
-    .replace('{{HEX_PALETTE_LIST}}', palette.map((h) => `- ${h}`).join('\n'));
+    .replace('{{PRIMARY_FAMILY}}', familyNames.primary || BRAND.primary)
+    .replace('{{SECONDARY_FAMILY}}', familyNames.secondary || BRAND.secondary)
+    .replace('{{NEUTRAL_FAMILY}}', familyNames.neutral || BRAND.neutral)
+    .replace('{{HEX_PALETTE_LIST}}', hexes.map((h) => `- ${h}`).join('\n'));
 
   await fs.writeFile(path.join(STATE_SUB, 'claude-mark-prompt.txt'), prompt);
 
@@ -180,31 +228,37 @@ async function generateMarkViaClaude() {
 // about composition bugs, but don't be so strict that valid design choices
 // trigger false positives. When iterating, prefer "X must be true" over
 // "exactly N elements must be Y" phrasings.
+//
+// The criteria describe COMPOSITION ONLY — containment, clipping, overlap,
+// alignment. They deliberately do not describe any particular mark, because
+// the mark may come from a project override or an LLM and this skill has no
+// idea what it depicts. Criteria that named specific shapes and colours ("a
+// dark-rose accent card", "6 mini-cards") were meaningless for every project
+// but the one they were written for, and would fail a perfectly good mark.
 const VISION_CRITERIA = {
   'logo-mark': [
-    'All 6 mini-cards are fully contained inside the rounded backplate with visible padding on every side.',
-    'A single dark-rose accent card is visible (it can be any one of the 6 positions). The other 5 cards may be a mix of neutral-stone tones and lighter rose tones — that gradient is intentional.',
-    'No card touches the canvas edges or extends past the backplate.',
+    'Every element of the mark is fully contained inside the rounded backplate, with visible padding on all four sides.',
+    'Nothing is clipped by the canvas edge and nothing extends past the backplate.',
+    'The composition reads as a deliberate mark, not as elements scattered or stacked by accident.',
   ],
   'wordmark': [
-    'The mark fits entirely inside its rounded backplate — no cards stick out left, right, top, or bottom.',
-    `The "${BRAND_NAME}" text is fully visible: not clipped at the right edge of the canvas, not overlapping the mark.`,
+    'The mark fits entirely inside its rounded backplate — nothing sticks out left, right, top, or bottom.',
+    `The text "${BRAND_NAME}" is fully visible: not clipped at the right edge of the canvas, and not overlapping the mark.`,
     'The mark and the text appear vertically aligned (their centerlines roughly match).',
   ],
   'favicon': [
-    'The 6 mini-cards are visible and the dark-rose accent card is identifiable.',
+    'The mark is legible at this small size — the shapes are distinguishable, not a smudge.',
     'Composition is not visibly distorted or clipped.',
   ],
   'apple-touch-icon': [
-    'All 6 mini-cards fit inside the rounded backplate.',
-    'A single dark-rose accent card is visible. The other 5 may be neutral or lighter rose — that mix is intentional.',
+    'The whole mark fits inside the rounded backplate with padding on all sides.',
     'No clipping at the canvas edges.',
   ],
   'og-image': [
-    'The mark at the top is centered inside its backplate, no cards sticking out.',
-    'All text strings (section marker, headline lines, supporting copy, wordmark) are fully visible — no clipping at left/right canvas edges, no overlapping text blocks.',
-    `The bottom-row signature shows a small mark followed by the word "${BRAND_NAME}" — they should not overlap.`,
-    'Overall composition feels balanced — content does not crowd one corner.',
+    'The mark at the top is centered inside its backplate and nothing sticks out of it.',
+    'Every text string is fully visible — no clipping at the left or right canvas edge, and no two text blocks overlapping each other.',
+    `The product name "${BRAND_NAME}" is readable and is the most prominent text on the card.`,
+    'Overall composition feels balanced — content does not crowd one corner, and there is no large empty band.',
   ],
 };
 
@@ -263,11 +317,11 @@ async function resolveMarkSvg() {
   return { svg: fallbackMarkSvg(), source: 'fallback-template' };
 }
 
-// Favicon: same pack-grid as logo-mark for brand unification, but no
-// rounded-square backplate so the mark sits cleanly on dark browser tabs.
+// Favicon: same mark as logo-mark for brand unification, but no rounded-square
+// backplate so it sits cleanly on light and dark browser tabs alike.
 function fallbackFaviconSvg() {
   return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 96 96" width="96" height="96">
-  <g transform="translate(18, 20)">
+  <g transform="translate(18, 18)">
 ${markInnerSvg()}
   </g>
 </svg>
@@ -278,69 +332,74 @@ async function svgFaviconResolved() {
   return await resolveBrandSvg('favicon.svg', fallbackFaviconSvg);
 }
 
-// OG card: pack-grid mark in a soft backplate at top → DM Sans section
-// marker → editorial two-clause Fraunces headline (upright + italic-rose
-// per brand pattern) → supporting copy → bottom wordmark+mini-mark
-// signature. Atmospheric rose/emerald glows in opposing corners.
-function svgOgImage() {
+// Greedy word wrap for SVG <text> — SVG has no text flow, so lines must be
+// laid out here. `perLine` is a character budget, calibrated from the font
+// size against the canvas width by the caller.
+function wrapText(text, perLine, maxLines) {
+  const words = String(text).split(/\s+/).filter(Boolean);
+  const lines = [];
+  let line = '';
+  for (const w of words) {
+    const next = line ? `${line} ${w}` : w;
+    if (next.length > perLine && line) { lines.push(line); line = w; }
+    else line = next;
+    if (lines.length === maxLines) break;
+  }
+  if (line && lines.length < maxLines) lines.push(line);
+  // If the copy did not fit, end the last line with an ellipsis rather than
+  // silently dropping the rest.
+  const used = lines.join(' ').split(/\s+/).length;
+  if (used < words.length && lines.length) lines[lines.length - 1] += '…';
+  return lines;
+}
+
+// OG card: the mark in a soft backplate at the top, the product name in the
+// export's heading face, the product's own one-line description beneath it,
+// and the domain as a sign-off. Every string is the project's: name and domain
+// from project.json, description from project.json `context` or the export's
+// product-overview.md. Atmospheric glows use the project's primary/secondary.
+function svgOgImage(description) {
   const innerForOg = markInnerSvg({ indent: '      ' });
+  const descLines = description ? wrapText(description, 62, 3) : [];
+  const descSvg = descLines.map((line, i) => `
+  <text x="600" y="${430 + i * 40}" text-anchor="middle"
+        font-family="${svgFontFamily(BRAND.bodyFont)}"
+        font-weight="400" font-size="26"
+        fill="${BRAND.neutral}">${xml(line)}</text>`).join('');
+  const domainSvg = DOMAIN ? `
+  <text x="600" y="572" text-anchor="middle"
+        font-family="${svgFontFamily(BRAND.bodyFont)}"
+        font-weight="500" font-size="22" letter-spacing="2"
+        fill="${BRAND.neutral}">${xml(DOMAIN)}</text>` : '';
+
   return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 630" width="1200" height="630">
   <defs>
-    <radialGradient id="roseGlow" cx="18%" cy="20%" r="55%">
-      <stop offset="0%" stop-color="#fecdd3" stop-opacity="0.55"/>
-      <stop offset="100%" stop-color="${STONE_50}" stop-opacity="0"/>
+    <radialGradient id="primaryGlow" cx="18%" cy="20%" r="55%">
+      <stop offset="0%" stop-color="${BRAND.primary}" stop-opacity="0.28"/>
+      <stop offset="100%" stop-color="${BRAND.surface}" stop-opacity="0"/>
     </radialGradient>
-    <radialGradient id="emeraldGlow" cx="88%" cy="92%" r="45%">
-      <stop offset="0%" stop-color="#a7f3d0" stop-opacity="0.35"/>
-      <stop offset="100%" stop-color="${STONE_50}" stop-opacity="0"/>
+    <radialGradient id="secondaryGlow" cx="88%" cy="92%" r="45%">
+      <stop offset="0%" stop-color="${BRAND.secondary}" stop-opacity="0.22"/>
+      <stop offset="100%" stop-color="${BRAND.surface}" stop-opacity="0"/>
     </radialGradient>
   </defs>
-  <rect width="1200" height="630" fill="${STONE_50}"/>
-  <rect width="1200" height="630" fill="url(#roseGlow)"/>
-  <rect width="1200" height="630" fill="url(#emeraldGlow)"/>
+  <rect width="1200" height="630" fill="${BRAND.surface}"/>
+  <rect width="1200" height="630" fill="url(#primaryGlow)"/>
+  <rect width="1200" height="630" fill="url(#secondaryGlow)"/>
 
-  <!-- mark at top center in soft rounded backplate -->
-  <g transform="translate(540, 78)">
-    <rect width="120" height="120" rx="22" fill="${STONE_50}"/>
-    <g transform="translate(22, 26) scale(1.31)">
+  <!-- mark at top center in a soft rounded backplate -->
+  <g transform="translate(540, 88)">
+    <rect width="120" height="120" rx="22" fill="${BRAND.surface}"/>
+    <g transform="translate(12, 12) scale(1.6)">
 ${innerForOg}
     </g>
   </g>
 
-  <g transform="translate(600, 252)">
-    <line x1="-200" y1="0" x2="-90" y2="0" stroke="#d6d3d1" stroke-width="1"/>
-    <text x="0" y="5" text-anchor="middle"
-          font-family="DM Sans, system-ui, sans-serif"
-          font-size="14" font-weight="500"
-          letter-spacing="6"
-          fill="${STONE_600}">A WEDDING AESTHETIC AI</text>
-    <line x1="90" y1="0" x2="200" y2="0" stroke="#d6d3d1" stroke-width="1"/>
-  </g>
-
-  <text x="600" y="350" text-anchor="middle"
-        font-family="Fraunces, Georgia, serif"
-        font-weight="500" font-size="64"
-        fill="#1c1917">Your wedding mood pack,</text>
-  <text x="600" y="430" text-anchor="middle"
-        font-family="Fraunces, Georgia, serif"
-        font-style="italic" font-weight="500" font-size="64"
-        fill="${ROSE_900}">in 60 seconds.</text>
-
-  <text x="600" y="500" text-anchor="middle"
-        font-family="DM Sans, system-ui, sans-serif"
-        font-weight="400" font-size="24"
-        fill="${STONE_600}">Six Pinterest-pinnable artifacts. One-time purchase.</text>
-
-  <!-- bottom wordmark signature: mini mark + brand name -->
-  <g transform="translate(530, 555)">
-    <g transform="translate(0, 5) scale(0.55)">
-${innerForOg}
-    </g>
-    <text x="48" y="32" text-anchor="start"
-          font-family="Fraunces, Georgia, serif"
-          font-style="italic" font-weight="600" font-size="28"
-          fill="${ROSE_900}">${BRAND_NAME}</text>
-  </g>
+  <text x="600" y="330" text-anchor="middle"
+        font-family="${svgFontFamily(BRAND.headingFont)}"
+        font-weight="600" font-size="72"
+        fill="${BRAND.primary}">${xml(BRAND_NAME)}</text>
+${descSvg}${domainSvg}
 </svg>
 `;
 }
@@ -367,12 +426,14 @@ async function ensureDeps() {
   run('npm', ['install', '--no-fund', '--no-audit', ...missing]);
 }
 
-// Each entry: name (used for cache filename) + Google Fonts CSS URL.
-const FONT_DOWNLOADS = [
-  { name: 'Fraunces-Italic', css: 'https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght@1,9..144,600&display=swap' },
-  { name: 'Fraunces-Roman',  css: 'https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,500;9..144,600;9..144,700&display=swap' },
-  { name: 'DMSans',          css: 'https://fonts.googleapis.com/css2?family=DM+Sans:opsz,wght@9..40,400;9..40,500;9..40,600;9..40,700&display=swap' },
-];
+// The fonts to fetch are the ones THIS project's design system declares, with
+// each family's own axis spec preserved from the export's combined Google
+// Fonts URL. (Cache filenames are slugified from the family name.)
+const FONT_DOWNLOADS = perFamilyFontUrls().map((f) => ({
+  name: f.name.replace(/[^A-Za-z0-9]+/g, ''),
+  family: f.name,
+  css: f.css,
+}));
 
 async function downloadFonts() {
   await fs.mkdir(FONT_CACHE, { recursive: true });
@@ -404,14 +465,17 @@ async function downloadFonts() {
 
 async function renderPng(svgString, width, fontPaths) {
   const { Resvg } = await import('@resvg/resvg-js');
+  // The default family is the project's heading face — resvg falls back to it
+  // for any glyph the SVG's font-family chain does not resolve.
+  const headingName = primaryFamilyName(BRAND.headingFont);
   const fontOpts = fontPaths.length > 0
-    ? { fontFiles: fontPaths, loadSystemFonts: false, defaultFontFamily: 'Fraunces' }
-    : { loadSystemFonts: true, defaultFontFamily: 'Georgia' };
+    ? { fontFiles: fontPaths, loadSystemFonts: false, defaultFontFamily: headingName }
+    : { loadSystemFonts: true, defaultFontFamily: headingName };
   const resvg = new Resvg(svgString, { font: fontOpts, fitTo: { mode: 'width', value: width } });
   return resvg.render().asPng();
 }
 
-async function writeAssets(fontPaths) {
+async function writeAssets(fontPaths, description) {
   await fs.mkdir(PUBLIC_DIR, { recursive: true });
   await fs.mkdir(SVG_DUMP, { recursive: true });
 
@@ -421,7 +485,7 @@ async function writeAssets(fontPaths) {
   const markResolved = await resolveMarkSvg();
   const mark96 = markResolved.svg;
   const fav    = await svgFaviconResolved();
-  const og     = svgOgImage();
+  const og     = svgOgImage(description);
 
   await fs.writeFile(path.join(PUBLIC_DIR, 'logo.svg'),       wordmark);
   await fs.writeFile(path.join(PUBLIC_DIR, 'logo-mark.svg'),  mark96);
@@ -510,30 +574,34 @@ async function patchManifest() {
   ];
   manifest.start_url = manifest.start_url || '.';
   manifest.display = manifest.display || 'standalone';
-  manifest.theme_color = ROSE_900;   // brand primary
-  manifest.background_color = STONE_50;
+  manifest.theme_color = BRAND.primary;
+  manifest.background_color = BRAND.surface;
   await fs.writeFile(manifestPath, JSON.stringify(manifest, null, 2) + '\n');
-  log(`  patched public/manifest.json (name="${manifest.name}", theme ${ROSE_900})`);
+  log(`  patched public/manifest.json (name="${manifest.name}", theme ${BRAND.primary})`);
 }
 
-const NEW_ROOT_TSX = `import { HeadContent, Scripts, createRootRoute, useNavigate } from '@tanstack/react-router'
+// The description is the project's own words (project.json `context`, else the
+// Design OS product-overview summary). When the project has said nothing about
+// itself, the description meta tags are OMITTED rather than filled with copy
+// this skill made up.
+const NEW_ROOT_TSX = (PRODUCT_DESCRIPTION) => `import { HeadContent, Scripts, createRootRoute, useNavigate } from '@tanstack/react-router'
 import { TanStackRouterDevtoolsPanel } from '@tanstack/react-router-devtools'
 import { TanStackDevtools } from '@tanstack/react-devtools'
 import { AppShell } from '../components/shell'
 
 import appCss from '../styles.css?url'
-
+${PRODUCT_DESCRIPTION ? `
 const DESCRIPTION = ${JSON.stringify(PRODUCT_DESCRIPTION)}
-
+` : ''}
 export const Route = createRootRoute({
   head: () => ({
     meta: [
       { charSet: 'utf-8' },
       { name: 'viewport', content: 'width=device-width, initial-scale=1' },
-      { title: ${JSON.stringify(BRAND_NAME)} },
-      { name: 'description', content: DESCRIPTION },
-      { property: 'og:title', content: ${JSON.stringify(BRAND_NAME)} },
-      { property: 'og:description', content: DESCRIPTION },
+      { title: ${JSON.stringify(BRAND_NAME)} },${PRODUCT_DESCRIPTION ? `
+      { name: 'description', content: DESCRIPTION },` : ''}
+      { property: 'og:title', content: ${JSON.stringify(BRAND_NAME)} },${PRODUCT_DESCRIPTION ? `
+      { property: 'og:description', content: DESCRIPTION },` : ''}
       { property: 'og:image', content: '/og-image.png' },
       { property: 'og:image:width', content: '1200' },
       { property: 'og:image:height', content: '630' },
@@ -586,10 +654,10 @@ function AppShellWrapper({ children }: { children: React.ReactNode }) {
 }
 `;
 
-async function patchRootTsx() {
+async function patchRootTsx(description) {
   const before = await fs.readFile(ROOT_TSX, 'utf-8');
   await fs.writeFile(path.join(STATE_SUB, '__root.tsx.before.txt'), before);
-  await fs.writeFile(ROOT_TSX, NEW_ROOT_TSX);
+  await fs.writeFile(ROOT_TSX, NEW_ROOT_TSX(description));
   log('  rewrote src/routes/__root.tsx (added icon links + OG meta)');
 }
 
@@ -602,14 +670,29 @@ async function main() {
   );
   if (prior.status !== 'ok') die('03-shell not ok; halting.');
 
+  try { requireExport(); } catch (e) { die(e.message); }
+  if (!BRAND.primary) {
+    die(`No primary colour in the Design OS export (${EXPORT_DIR}/design-system/tokens.css).\n` +
+        `  Expected --color-primary or --color-primary-<n>. Re-run Design OS's /design-tokens step.`);
+  }
+
+  // The one-line description used for the OG card and the meta description.
+  // project.json `context` (written by 00-prereqs from the export) wins;
+  // otherwise the export's product-overview summary. Never a stock sentence —
+  // if the project has said nothing about itself, the card carries the name
+  // and domain alone.
+  const { text: description, source: descriptionSource } = productDescription(PROJECT);
+  log(`▶ Brand: ${BRAND_NAME} · primary ${BRAND.primary} · heading ${primaryFamilyName(BRAND.headingFont)}`);
+  log(`▶ Description from ${descriptionSource}`);
+
   log('▶ Installing @resvg/resvg-js + png-to-ico...');
   await ensureDeps();
 
-  log('▶ Ensuring Fraunces (italic + roman) and DM Sans TTFs cached...');
+  log(`▶ Ensuring TTFs cached for ${FONT_DOWNLOADS.map((f) => f.family).join(', ') || '(no webfonts declared)'}...`);
   const fontPaths = await downloadFonts();
 
   log('▶ Generating SVG sources + rendering rasters...');
-  const writeResult = await writeAssets(fontPaths);
+  const writeResult = await writeAssets(fontPaths, description);
 
   log('▶ Vision-checking rendered assets via claude -p...');
   const visionResults = {};
@@ -638,7 +721,7 @@ async function main() {
   );
 
   log('▶ Patching src/routes/__root.tsx with icon links + OG meta...');
-  await patchRootTsx();
+  await patchRootTsx(description);
 
   // Derive SVG dims from the file's own width/height (or viewBox) rather than
   // hardcoding — hardcoded dims drifted out of sync with the actual assets
@@ -665,10 +748,24 @@ async function main() {
       'og-image.png':         { size: await sizeOf('og-image.png'),         dims: '1200×630' },
     },
     manifestPatched: true,
-    fonts: fontPaths.length > 0 ? { paths: fontPaths, status: 'downloaded' } : { status: 'fallback-to-system-serif' },
+    fonts: fontPaths.length > 0
+      ? { families: FONT_DOWNLOADS.map((f) => f.family), paths: fontPaths, status: 'downloaded' }
+      : { families: FONT_DOWNLOADS.map((f) => f.family), status: 'fallback-to-system-fonts' },
     markSource: globalThis.__markSource || 'unknown',
     rootTsxRewritten: ROOT_TSX,
-    description: PRODUCT_DESCRIPTION,
+    // Where each brand value came from — no constant in this skill.
+    brand: {
+      name: BRAND_NAME,
+      domain: DOMAIN,
+      primary: BRAND.primary,
+      secondary: BRAND.secondary,
+      surface: BRAND.surface,
+      headingFont: BRAND.headingFont,
+      bodyFont: BRAND.bodyFont,
+      source: `${EXPORT_DIR}/design-system + .supertools-state/project.json`,
+    },
+    description,
+    descriptionSource,
     completedAt: new Date().toISOString(),
   };
   await fs.writeFile(path.join(STATE_SUB, 'patch-summary.json'), JSON.stringify(summary, null, 2) + '\n');

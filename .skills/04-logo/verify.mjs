@@ -91,7 +91,16 @@ async function main() {
       ? pass(`dims: ${file}`, `${w}×${h}`)
       : fail(`dims: ${file}`, `expected ${w}×${h}, got ${d ? `${d.w}×${d.h}` : 'unparseable'}`);
   };
-  await expectSvgDim('logo.svg', 320, 96);
+  // The wordmark canvas is sized to the brand name, so its width is not fixed
+  // — a hardcoded 320×96 quietly required a ~9-character name. Assert the
+  // shape instead: a horizontal lockup, 96 tall.
+  {
+    const d = svgDim(await fs.readFile(path.join(PUBLIC_DIR, 'logo.svg'), 'utf-8'));
+    if (!d) fail('dims: logo.svg', 'unparseable');
+    else if (d.h !== 96) fail('dims: logo.svg', `expected height 96, got ${d.h}`);
+    else if (d.w < d.h * 2) fail('dims: logo.svg', `${d.w}×${d.h} is not a horizontal lockup (want width ≥ 2× height)`);
+    else pass('dims: logo.svg', `${d.w}×${d.h} horizontal lockup`);
+  }
   await expectSvgDim('logo-mark.svg', 96, 96);
   await expectSvgDim('favicon.svg', 96, 96);
 
