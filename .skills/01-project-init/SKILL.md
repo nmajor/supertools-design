@@ -7,30 +7,43 @@ description: Scaffold the TanStack Start + CF Workers app in-place over the exis
 
 Lay down a runnable TanStack Start + CF Workers scaffold at the project root,
 without disturbing the research, design, and docs already present. The skill
-is a thin wrapper around `supertools-stack/install.sh` — whatever
+is a thin wrapper around `supertools-stack/install.sh` — **whatever
 install-steps that repo ships at the time of the run are what ends up in the
-project (as of 2026-07-03, v0.11: `00-scaffold`, `10-db` (D1 + Drizzle +
-Better Auth schema + cascade contract test), `15-foundation` (env example,
-logging, error pages, security headers), `20-auth` (Better Auth + sign-in/up),
-`25-email` (Ahasend transport), `26-password-reset`, `27-auth-hardening`
-(per-IP rate limit + Turnstile on /sign-up), `30-marketing`, `40-dashboard`,
-`50-legal`).
+project.** This skill deliberately does not list them: the stack repo owns
+that list and changes it independently. Read it from the source of truth
+instead — `ls scripts/install-steps/*.mjs` in the stack checkout, or the
+Status section of the stack repo's README.
 
 The scaffolder refuses to write into a non-empty directory, so the strategy
 is: run it into a fresh tmp dir, then rsync the result back with anchored
 excludes for every preserved path plus `--ignore-existing`.
 
-## Stack source (deliberate deviation from the original)
+## Stack source
 
-A **local checkout is preferred** (`$SUPERTOOLS_STACK_DIR`, else `../supertools-stack`)
-over a GitHub clone: as of 2026-07-03 the local checkout carries 14 commits of
-install-steps (v0.4–v0.11) that `origin/main` does not have, while origin only
-adds ralph-harness commits. Cloning GitHub would silently produce a far
-thinner scaffold. The receipt records the source, SHA, dirty flag, and the
-divergence; **reconciling the two branches is a founder to-do**. On machines
-without the local checkout, the skill falls back to a GitHub clone
-(`_shared/repos.mjs`). `install.sh` runs with `--no-refresh` and this skill
-never commits/pushes to the stack repo.
+**`github.com/nmajor/supertools-stack` is the canonical source.** The skill
+clones it (`_shared/repos.mjs`) and runs `install.sh --no-refresh`. This skill
+never commits or pushes to the stack repo.
+
+`$SUPERTOOLS_STACK_DIR` (else `../supertools-stack`) overrides the clone when
+set, for local stack development. It is an override, not a preference — an
+unset `$SUPERTOOLS_STACK_DIR` is the normal case and is not a degraded one.
+
+The receipt records which source was used, its SHA, and whether the working
+tree was dirty.
+
+> **Do not enumerate what the scaffold contains here.** The scaffold is
+> whatever install-steps the stack repo ships at run time, discovered by its
+> own `scripts/orchestrate-install.mjs` in numeric-prefix order. To see the
+> current pipeline, ask the tree rather than this file:
+> `ls scripts/install-steps/*.mjs` in the stack checkout.
+>
+> A previous version of this section claimed a local checkout was *preferred*
+> because origin lagged it by 14 commits, and warned that cloning GitHub would
+> "silently produce a far thinner scaffold." Origin has since caught up and
+> that claim became actively harmful: an agent acting on it went looking for a
+> local checkout that need not exist, and reported a non-existent blocker.
+> Frozen "as of \<date\>" claims about another repo's contents go stale
+> without any signal that they have.
 
 ## Protected from the merge
 
