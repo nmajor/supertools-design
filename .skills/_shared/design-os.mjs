@@ -71,6 +71,42 @@ export function requireExport() {
   return r;
 }
 
+/**
+ * The shell component files this project's export actually contains.
+ *
+ * Design OS emits whatever the `/design-shell` step produced — the reference
+ * implementation had a Footer, this one does not, and another might add a
+ * CommandBar. Copying a fixed five-file list is how a skill ends up demanding
+ * another project's components, so the list is read from disk.
+ *
+ * `AppShell.tsx` and `index.ts` are the contract: the shell entry point and
+ * its barrel. Everything else alongside them comes along.
+ *
+ * @returns {string[]} filenames, `AppShell.tsx` first, then sorted
+ */
+export function shellComponentFiles() {
+  let entries;
+  try {
+    entries = fs.readdirSync(SHELL_DIR, { withFileTypes: true });
+  } catch (e) {
+    if (e.code !== 'ENOENT') throw e;
+    throw new Error(`Design OS shell components not found at ${SHELL_DIR}\n  ${HELP}`);
+  }
+  const files = entries
+    .filter((d) => d.isFile() && /\.tsx?$/.test(d.name))
+    .map((d) => d.name)
+    .sort();
+  for (const required of ['AppShell.tsx', 'index.ts']) {
+    if (!files.includes(required)) {
+      throw new Error(
+        `${SHELL_DIR} has no ${required} — the export's shell is incomplete.\n` +
+        `  Re-run Design OS's /design-shell step, then /export-product.`
+      );
+    }
+  }
+  return ['AppShell.tsx', ...files.filter((f) => f !== 'AppShell.tsx')];
+}
+
 function readMaybe(p) {
   try { return fs.readFileSync(p, 'utf-8'); } catch (e) {
     if (e.code === 'ENOENT') return null;

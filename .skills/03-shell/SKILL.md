@@ -1,35 +1,49 @@
 ---
 name: 03-shell
-description: Replace the scaffold's demo Header/Footer/ThemeToggle with the project AppShell + MainNav + UserMenu + Footer; wire onNavigate to TanStack Router; clean up the lagoon/sea demo CSS.
+description: Replace the scaffold's demo Header/Footer/ThemeToggle with the shell components the Design OS export ships; wire onNavigate to TanStack Router; clean up the scaffold's demo CSS.
 ---
 
 # 03 — Shell
 
-Drop the application shell from `design/product-plan/shell/` into
-the scaffold. After this skill the home page renders the real wordmark,
-sign-in button, and "Made with AI" footer pill in stone/rose/emerald —
-the brand chrome that every section sits inside.
+Drop the application shell from `design/product-plan/shell/` into the
+scaffold. After this skill the home page renders the real wordmark and the
+brand chrome that every section sits inside.
+
+**Which components exist is the export's call.** The file list is read from
+`design/product-plan/shell/components/` rather than fixed here — one project's
+shell has a `Footer`, another's does not, and a third adds a command bar.
+`AppShell.tsx` and `index.ts` are the only required members.
+
+**Typography belongs to skill 02.** This skill rewrites `src/styles.css`, so
+it has to carry the font `@import` and `@theme` block across — it reads them
+out of the file 02 wrote instead of declaring its own copy.
 
 ## Inputs
 
 - `.supertools-state/02-design-tokens.json` (status: ok)
-- `design/product-plan/shell/components/{AppShell, MainNav, Footer, UserMenu, index}.{tsx, ts}`
+- `design/product-plan/shell/components/*.{tsx,ts}` — must include
+  `AppShell.tsx` and `index.ts`
+- `src/styles.css` as skill 02 left it (the `@theme` block and the
+  `BEGIN`/`END` token markers)
 
 ## What setup.mjs does
 
 1. **Installs `@radix-ui/react-dropdown-menu`** (used by `UserMenu`).
-2. **Copies five files** from `design/product-plan/shell/components/` to
-   `src/components/shell/`. Verbatim — these are framework-agnostic, props-based.
+2. **Copies every component the export ships** from
+   `design/product-plan/shell/components/` to `src/components/shell/`.
+   Verbatim — these are framework-agnostic, props-based.
 3. **Deletes scaffold demos**: `src/components/{Header, Footer, ThemeToggle}.tsx`.
 4. **Rewrites `src/routes/__root.tsx`** to wrap `{children}` with `<AppShell>`,
    via a small `AppShellWrapper` that consumes TanStack Router's `useNavigate`
    for the `onNavigate` / `onSignIn` callbacks. `user={null}` for now — auth
    wires into skill 15 (ralph-build). `<title>` set to the brand name from `project.json`.
-5. **Rewrites `src/styles.css`** to a clean minimum: the project Google Fonts,
-   `@import "tailwindcss"`, `@plugin "@tailwindcss/typography"`, the project
-   `@theme` typography map, a tiny box-sizing/body reset, and skill 02's
-   `:root` token block (extracted via its BEGIN/END markers). The lagoon/sea/
-   island-shell demo CSS the scaffold shipped is dropped.
+5. **Rewrites `src/styles.css`** to a clean minimum: skill 02's webfont
+   `@import` and `@theme` typography map carried across verbatim,
+   `@import "tailwindcss"`, `@plugin "@tailwindcss/typography"`, a tiny
+   box-sizing/body reset, and skill 02's `:root` token block (extracted via
+   its BEGIN/END markers). The lagoon/sea/island-shell demo CSS the scaffold
+   shipped is dropped. Halts if the `@theme` block is missing rather than
+   substituting a default.
 
 ## Steps
 
@@ -45,17 +59,20 @@ the brand chrome that every section sits inside.
 
 ## Verifier checks
 
-- Five shell files exist at `src/components/shell/`.
+- Every shell component the export ships exists at `src/components/shell/`.
 - Three scaffold demo files gone.
 - `@radix-ui/react-dropdown-menu` in `dependencies`.
 - `__root.tsx` imports `AppShell` and uses `useNavigate`.
-- `src/styles.css` has no lagoon/sea/island-shell selectors; still has skill 02's tokens.
+- `src/styles.css` has no lagoon/sea/island-shell selectors; still carries
+  every custom property the export's `tokens.css` declares, and still has an
+  `@theme` block.
 - `npm run build` green, `npx tsc --noEmit` green.
-- `vite dev` GET `/` returns 2xx and HTML contains the brand name (wordmark) + `Made with AI` (footer pill).
+- `vite dev` GET `/` returns 2xx and the HTML contains the brand name from
+  `project.json`.
 
 ## Output
 
-- `src/components/shell/` (5 files).
+- `src/components/shell/` (one file per component in the export).
 - `src/routes/__root.tsx` rewritten.
 - `src/styles.css` rewritten clean.
 - `package.json` adds `@radix-ui/react-dropdown-menu`.

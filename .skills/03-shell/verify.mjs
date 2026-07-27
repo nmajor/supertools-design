@@ -10,6 +10,7 @@ import net from 'node:net';
 import { spawn, spawnSync } from 'node:child_process';
 import { loadEnv, PROJECT_ROOT } from '../_shared/env.mjs';
 import { readProject } from '../_shared/project.mjs';
+import { parseTokens, readTokensCss, shellComponentFiles } from '../_shared/design-os.mjs';
 
 const BRAND = readProject().brandName;
 
@@ -48,7 +49,17 @@ async function killGroup(pid) {
 async function main() {
   loadEnv();
 
-  for (const f of ['AppShell.tsx', 'MainNav.tsx', 'Footer.tsx', 'UserMenu.tsx', 'index.ts']) {
+  // Whatever the export ships must have landed — not a fixed list. The
+  // reference implementation had a Footer component; other projects do not,
+  // and demanding one made this verifier fail on a perfectly good export.
+  let shellFiles = [];
+  try {
+    shellFiles = shellComponentFiles();
+    pass('shell components declared by the export', shellFiles.join(', '));
+  } catch (e) {
+    fail('shell components declared by the export', e.message);
+  }
+  for (const f of shellFiles) {
     (await exists(path.join(PROJECT_ROOT, 'src/components/shell', f)))
       ? pass(`shell: ${f}`) : fail(`shell: ${f}`, 'missing');
   }
@@ -76,9 +87,22 @@ async function main() {
   !/--sea-ink|--lagoon|island-shell|island-kicker|\.feature-card|\.nav-link\b/.test(css)
     ? pass('styles.css clean of lagoon/sea demo')
     : fail('styles.css clean of lagoon/sea demo', 'demo selectors still present');
-  /--color-primary-900:\s*#881337/.test(css)
-    ? pass('styles.css preserves skill 02 tokens')
-    : fail('styles.css preserves skill 02 tokens', 'rose tokens missing');
+
+  // The rewrite must not have dropped skill 02's work. Checked against the
+  // project's own export rather than a named colour — this used to assert
+  // --color-primary-900: #881337, which no non-reference project ever has.
+  {
+    const exportTokens = parseTokens(readTokensCss());
+    const shipped = parseTokens(css);
+    const lost = [...exportTokens.keys()].filter((k) => !shipped.has(k));
+    exportTokens.size && !lost.length
+      ? pass('styles.css preserves skill 02 tokens', `${exportTokens.size} custom properties intact`)
+      : fail('styles.css preserves skill 02 tokens',
+          exportTokens.size ? `dropped by the rewrite: ${lost.join(', ')}` : 'the export declares no tokens');
+  }
+  /@theme\s*\{[\s\S]*?\}/.test(css)
+    ? pass('styles.css preserves skill 02 @theme typography')
+    : fail('styles.css preserves skill 02 @theme typography', '@theme block missing after the rewrite');
 
   const build = spawnSync('npm', ['run', 'build'], { cwd: PROJECT_ROOT, encoding: 'utf-8' });
   build.status === 0
@@ -101,12 +125,12 @@ async function main() {
       fail('vite dev GET /', 'no 2xx within 60s');
     } else {
       pass('vite dev GET /', `HTTP ${res.status} on port ${port}`);
+      // The shell renders this project's brand. Anything more specific than
+      // that — a particular footer pill, a particular tagline — belongs to
+      // whoever designed the shell, not to this skill.
       new RegExp(BRAND.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'i').test(res.html)
         ? pass(`HTML contains the ${BRAND} wordmark`)
         : fail(`HTML contains the ${BRAND} wordmark`, `not found in ${res.html.length} bytes`);
-      /Made with AI/.test(res.html)
-        ? pass('HTML contains "Made with AI" pill')
-        : fail('HTML contains "Made with AI" pill', 'not found');
     }
   } finally {
     if (vite.pid) await killGroup(vite.pid);

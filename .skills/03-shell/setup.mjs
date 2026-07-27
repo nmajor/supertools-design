@@ -7,23 +7,16 @@ import path from 'node:path';
 import { spawnSync } from 'node:child_process';
 import { loadEnv, PROJECT_ROOT } from '../_shared/env.mjs';
 import { readProject } from '../_shared/project.mjs';
+import { requireExport, SHELL_DIR, shellComponentFiles } from '../_shared/design-os.mjs';
 
 const STATE_SUB    = path.join(PROJECT_ROOT, '.supertools-state', '03-shell');
-const SHELL_SRC    = path.join(PROJECT_ROOT, 'design', 'product-plan', 'shell', 'components');
+const SHELL_SRC    = SHELL_DIR;
 const SHELL_DEST   = path.join(PROJECT_ROOT, 'src', 'components', 'shell');
 const ROOT_TSX     = path.join(PROJECT_ROOT, 'src', 'routes', '__root.tsx');
 const STYLES_PATH  = path.join(PROJECT_ROOT, 'src', 'styles.css');
 const PACKAGE_JSON = path.join(PROJECT_ROOT, 'package.json');
 
-const SHELL_FILES = ['AppShell.tsx', 'MainNav.tsx', 'Footer.tsx', 'UserMenu.tsx', 'index.ts'];
 const SCAFFOLD_DEMOS = ['Header.tsx', 'Footer.tsx', 'ThemeToggle.tsx'];
-
-const DEFAULT_FONTS_URL =
-  'https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght@' +
-  '0,9..144,400;0,9..144,500;0,9..144,600;0,9..144,700;' +
-  '1,9..144,500;1,9..144,600;1,9..144,700' +
-  '&family=DM+Sans:opsz,wght@9..40,400;9..40,500;9..40,600;9..40,700' +
-  '&family=IBM+Plex+Mono:wght@400;500&display=swap';
 
 const BEGIN_MARKER = '/* === supertools 02-design-tokens BEGIN === */';
 const END_MARKER   = '/* === supertools 02-design-tokens END === */';
@@ -85,17 +78,20 @@ function AppShellWrapper({ children }: { children: React.ReactNode }) {
 }
 `;
 
-const NEW_STYLES_PREFIX = `@import url("${DEFAULT_FONTS_URL}");
-@import "tailwindcss";
-@plugin "@tailwindcss/typography";
-
-@theme {
-  --font-sans:  "DM Sans", ui-sans-serif, system-ui, sans-serif;
-  --font-serif: "Fraunces", Georgia, serif;
-  --font-mono:  "IBM Plex Mono", ui-monospace, SFMono-Regular, Menlo, monospace;
+// Typography is skill 02's to own. This skill rewrites styles.css to drop the
+// scaffold's demo CSS, so it must carry the font @import and @theme block
+// across — but it reads them out of what 02 already wrote rather than
+// declaring its own copy. Two copies of a brand constant is how they drift.
+function stylesPrefix({ fontsImport, theme }) {
+  const imports = [
+    fontsImport,                       // '' when the design system has no webfonts
+    '@import "tailwindcss";',
+    '@plugin "@tailwindcss/typography";',
+  ].filter(Boolean).join('\n');
+  return `${imports}\n\n${theme}\n\n${MINIMAL_RESET}`;
 }
 
-/* minimal reset */
+const MINIMAL_RESET = `/* minimal reset */
 * { box-sizing: border-box; }
 html, body, #app { min-height: 100%; }
 body {
@@ -131,9 +127,9 @@ async function ensureRadixDep() {
   run('npm', ['install', '--no-fund', '--no-audit', '@radix-ui/react-dropdown-menu']);
 }
 
-async function copyShellComponents() {
+async function copyShellComponents(shellFiles) {
   await fs.mkdir(SHELL_DEST, { recursive: true });
-  for (const f of SHELL_FILES) {
+  for (const f of shellFiles) {
     const content = await fs.readFile(path.join(SHELL_SRC, f), 'utf-8');
     await fs.writeFile(path.join(SHELL_DEST, f), content);
     log(`  copied src/components/shell/${f}`);
@@ -163,15 +159,31 @@ async function patchRootTsx() {
 async function rewriteStylesCss() {
   const before = await fs.readFile(STYLES_PATH, 'utf-8');
   await fs.writeFile(path.join(STATE_SUB, 'styles.css.before.txt'), before);
+
   const markerRe = new RegExp(
     `${escapeRegex(BEGIN_MARKER)}[\\s\\S]*?${escapeRegex(END_MARKER)}`
   );
   const m = before.match(markerRe);
   if (!m) die('Could not find skill 02 BEGIN/END markers in src/styles.css — run skill 02 first.');
   const tokensBlock = m[0];
-  const next = NEW_STYLES_PREFIX + tokensBlock + '\n';
+
+  // Carry skill 02's typography across verbatim. A missing @theme block means
+  // 02 did not run (or was undone) — halt rather than substitute a default,
+  // which is how this file used to end up with another project's fonts.
+  const themeMatch = before.match(/@theme\s*\{[\s\S]*?\}/);
+  if (!themeMatch) {
+    die('No @theme block in src/styles.css — skill 02-design-tokens owns typography; run it first.');
+  }
+  const importMatch = before.match(/@import\s+url\("https:\/\/fonts\.googleapis\.com[^"]*"\)\s*;/);
+  const fontsImport = importMatch ? importMatch[0] : '';
+  log(fontsImport
+    ? '  carrying skill 02 webfont @import + @theme across'
+    : '  carrying skill 02 @theme across (no webfont @import — the design system declares none)');
+
+  const next = stylesPrefix({ fontsImport, theme: themeMatch[0] }) + tokensBlock + '\n';
   await fs.writeFile(STYLES_PATH, next);
   log(`  rewrote src/styles.css (${before.length} → ${next.length} bytes)`);
+  return { fontsImport: fontsImport || null, theme: themeMatch[0] };
 }
 
 async function main() {
@@ -183,11 +195,18 @@ async function main() {
   );
   if (prior.status !== 'ok') die('02-design-tokens not ok; halting.');
 
+  try { requireExport(); } catch (e) { die(e.message); }
+
+  // Which components exist is the export's call, not this skill's.
+  let shellFiles;
+  try { shellFiles = shellComponentFiles(); } catch (e) { die(e.message); }
+  log(`▶ Export ships ${shellFiles.length} shell components: ${shellFiles.join(', ')}`);
+
   log('▶ Ensuring @radix-ui/react-dropdown-menu installed...');
   await ensureRadixDep();
 
   log('▶ Copying shell components...');
-  await copyShellComponents();
+  await copyShellComponents(shellFiles);
 
   log('▶ Deleting scaffold demo components...');
   await deleteScaffoldDemos();
@@ -195,14 +214,17 @@ async function main() {
   log('▶ Patching src/routes/__root.tsx...');
   await patchRootTsx();
 
-  log('▶ Rewriting src/styles.css (drop lagoon/sea demo, preserve skill 02 tokens)...');
-  await rewriteStylesCss();
+  log('▶ Rewriting src/styles.css (drop scaffold demo CSS, preserve skill 02 typography + tokens)...');
+  const styles = await rewriteStylesCss();
 
   const summary = {
-    shellComponents: SHELL_FILES.map((f) => path.join(SHELL_DEST, f)),
+    shellComponentsFrom: SHELL_SRC,
+    shellComponents: shellFiles.map((f) => path.join(SHELL_DEST, f)),
     deletedScaffoldDemos: SCAFFOLD_DEMOS.map((f) => path.join(PROJECT_ROOT, 'src', 'components', f)),
     rootTsxRewritten: ROOT_TSX,
     stylesCssRewritten: STYLES_PATH,
+    // Recorded so the receipt shows the typography came from skill 02, not here.
+    typographyCarriedFromSkill02: styles,
     radixDropdownMenu: 'installed',
     completedAt: new Date().toISOString(),
   };
