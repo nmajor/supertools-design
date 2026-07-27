@@ -22,7 +22,7 @@ excludes for every preserved path plus `--ignore-existing`.
 
 ## Stack source (deliberate deviation from the original)
 
-The **local checkout at `/home/coder/projects/supertools-stack` is preferred**
+A **local checkout is preferred** (`$SUPERTOOLS_STACK_DIR`, else `../supertools-stack`)
 over a GitHub clone: as of 2026-07-03 the local checkout carries 14 commits of
 install-steps (v0.4–v0.11) that `origin/main` does not have, while origin only
 adds ralph-harness commits. Cloning GitHub would silently produce a far
@@ -58,7 +58,7 @@ name ("table already exists" on the next apply).
 ## Inputs
 
 - `.supertools-state/00-prereqs.json` (status: ok)
-- `/home/coder/projects/supertools-stack` (or network access to GitHub as fallback)
+- A local supertools-stack checkout via `$SUPERTOOLS_STACK_DIR` or `../supertools-stack` (or network access to GitHub as fallback)
 
 ## Steps
 

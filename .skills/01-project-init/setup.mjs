@@ -2,19 +2,16 @@
 // 01-project-init setup: scaffold the app stack into the project root.
 // Snapshots preserved files, runs supertools-stack install.sh into a tmp dir,
 // rsyncs the scaffold back, runs npm install, and hardens .gitignore +
-// tsconfig.json. Idempotent. Two
-// deliberate deviations, both recorded in the receipt:
+// tsconfig.json. Idempotent.
 //
-//   1. STACK SOURCE: the LOCAL checkout at /home/coder/projects/supertools-stack
-//      is preferred over a GitHub clone. As of 2026-07-03 the local checkout
-//      carries 14 commits (install-steps v0.4–v0.11: db, foundation, auth,
-//      email, password-reset, auth-hardening, marketing, dashboard, legal)
-//      that origin/main does NOT have; origin/main only adds ralph-harness
-//      commits. Cloning GitHub would silently scaffold a far thinner stack.
-//      The receipt records the local SHA + dirty state + the divergence.
-//   2. --no-refresh and NO push-back: we neither mutate the user's diverged
-//      stack repo with a dep refresh nor attempt to push to it. Reconciling
-//      the divergence is surfaced as a founder to-do instead.
+// STACK SOURCE resolution order (the chosen source + SHA go in the receipt):
+//   1. $SUPERTOOLS_STACK_DIR — an explicit local checkout.
+//   2. A sibling checkout next to this project (../supertools-stack).
+//   3. A fresh clone of github.com/nmajor/supertools-stack.
+//
+// A local checkout is used as-is: no dep refresh, no push-back. If it has
+// commits origin/main lacks, that divergence is reported in the receipt so it
+// can be reconciled deliberately rather than silently scaffolded from.
 
 import fs from 'node:fs/promises';
 import path from 'node:path';
@@ -24,7 +21,12 @@ import { PROJECT_ROOT } from '../_shared/env.mjs';
 import { ensureRepo } from '../_shared/repos.mjs';
 
 const STATE_SUB = path.join(PROJECT_ROOT, '.supertools-state', '01-project-init');
-const LOCAL_STACK = '/home/coder/projects/supertools-stack';
+// Candidate local checkouts, in preference order. Empty/missing entries are
+// skipped; if none has an install.sh we clone from GitHub.
+const STACK_CANDIDATES = [
+  process.env.SUPERTOOLS_STACK_DIR,
+  path.resolve(PROJECT_ROOT, '..', 'supertools-stack'),
+].filter(Boolean);
 export const PRESERVED = [
   'CLAUDE.md', 'design', 'docs', 'research', '.env', '.env.example',
   '.gitignore', '.skills', '.supertools-state',
@@ -103,24 +105,33 @@ function run(cmd, args, opts = {}) {
   return r;
 }
 
-// Resolve the stack source: local checkout preferred (see header), GitHub
-// clone as fallback for other machines.
+// Resolve the stack source (see header for the order).
 async function resolveStack() {
-  try {
-    await fs.access(path.join(LOCAL_STACK, 'install.sh'));
-    const sha = spawnSync('git', ['rev-parse', 'HEAD'], { cwd: LOCAL_STACK, encoding: 'utf-8' }).stdout.trim();
-    const dirty = spawnSync('git', ['status', '--porcelain'], { cwd: LOCAL_STACK, encoding: 'utf-8' }).stdout.trim() !== '';
-    const ahead = spawnSync('git', ['rev-list', '--count', 'origin/main..HEAD'], { cwd: LOCAL_STACK, encoding: 'utf-8' }).stdout.trim();
-    const behind = spawnSync('git', ['rev-list', '--count', 'HEAD..origin/main'], { cwd: LOCAL_STACK, encoding: 'utf-8' }).stdout.trim();
+  for (const dir of STACK_CANDIDATES) {
+    try {
+      await fs.access(path.join(dir, 'install.sh'));
+    } catch {
+      continue;
+    }
+    const git = (...a) => spawnSync('git', a, { cwd: dir, encoding: 'utf-8' }).stdout.trim();
+    const sha = git('rev-parse', 'HEAD');
+    const dirty = git('status', '--porcelain') !== '';
+    const ahead = git('rev-list', '--count', 'origin/main..HEAD');
+    const behind = git('rev-list', '--count', 'HEAD..origin/main');
+    // Only flag a divergence when there actually is one — a synced checkout
+    // is the normal case and should not emit a scary note.
+    const diverged = (ahead && ahead !== '0') || (behind && behind !== '0');
+    log(`  using local stack checkout at ${dir}`);
     return {
-      source: 'local-checkout', path: LOCAL_STACK, sha, dirty,
-      divergence: `local is ${ahead} ahead / ${behind} behind origin/main (origin lacks the install-steps; reconcile is a founder to-do)`,
+      source: 'local-checkout', path: dir, sha, dirty,
+      divergence: diverged
+        ? `local is ${ahead} ahead / ${behind} behind origin/main — reconcile before relying on this scaffold`
+        : null,
     };
-  } catch {
-    log('  (local stack checkout not found — falling back to GitHub clone)');
-    const repo = await ensureRepo('supertools-stack');
-    return { source: 'github-clone', path: repo.path, sha: repo.sha, dirty: false, divergence: null };
   }
+  log('  (no local stack checkout found — cloning from GitHub)');
+  const repo = await ensureRepo('supertools-stack');
+  return { source: 'github-clone', path: repo.path, sha: repo.sha, dirty: false, divergence: null };
 }
 
 async function runInstall(stackRepoPath, tmpProject) {
