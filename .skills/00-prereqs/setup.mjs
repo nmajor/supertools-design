@@ -1,10 +1,15 @@
 #!/usr/bin/env node
 // 00-prereqs setup.
-// Ensures .supertools-state/project.json exists with { projectName, domain }.
+// Ensures .supertools-state/project.json exists with
+// { projectName, domain, brandName, context }.
 // Idempotent: if the file already exists, reports it and exits 0.
 //
 // Usage:
 //   node .skills/00-prereqs/setup.mjs [domain] [--force]
+//
+// Gate: the Design OS export must already exist at design/product-plan/. That
+// is the pipeline's starting assumption, and it is also where brandName and
+// context come from — so there is nothing sensible to write without it.
 //
 // Domain resolution order:
 //   1. Existing .supertools-state/project.json (always wins; no-op).
@@ -18,6 +23,7 @@
 import fs from 'node:fs/promises';
 import path from 'node:path';
 import { PROJECT_ROOT } from '../_shared/env.mjs';
+import { requireExport, productOverview, productDescription } from '../_shared/design-os.mjs';
 
 const STATE_DIR    = path.join(PROJECT_ROOT, '.supertools-state');
 const PROJECT_JSON = path.join(STATE_DIR, 'project.json');
@@ -49,6 +55,14 @@ function normalizeDomain(input) {
 }
 
 async function main() {
+  // The Design OS export is a hard prerequisite for the whole pipeline. Fail
+  // here rather than three skills later with a confusing missing-file error.
+  try {
+    requireExport();
+  } catch (e) {
+    die(e.message);
+  }
+
   const args = process.argv.slice(2);
   const force = args.includes('--force');
   const rawArg = args.find((a) => !a.startsWith('--'));
@@ -89,11 +103,21 @@ async function main() {
     );
   }
 
+  // brandName + context come from the Design OS export, not from a guess.
+  // Both are consumed downstream (03 sets <title>, 04 writes the OG card and
+  // meta description, _collab-review substitutes {{PROJECT_CONTEXT}}), and a
+  // title-cased directory slug is a poor stand-in for a product's real name.
   const projectName = path.basename(PROJECT_ROOT);
+  const overview = productOverview();
+  const description = productDescription();
   const record = {
     projectName,
     domain,
     domainSource: source,
+    brandName: overview.name || undefined,
+    brandNameSource: overview.name ? 'design/product-plan/product-overview.md' : 'derived from projectName',
+    context: description.text || undefined,
+    contextSource: description.source,
     createdAt: new Date().toISOString(),
     sourceDesignFolder: PROJECT_ROOT,
   };
@@ -110,6 +134,9 @@ function printSummary(record) {
     projectName: record.projectName,
     domain: record.domain,
     domainSource: record.domainSource || 'pre-existing',
+    brandName: record.brandName || null,
+    brandNameSource: record.brandNameSource || 'pre-existing',
+    contextSource: record.contextSource || 'pre-existing',
   }, null, 2));
 }
 

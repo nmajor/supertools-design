@@ -20,6 +20,7 @@ import fsSync from 'node:fs';
 import path from 'node:path';
 import { loadEnv, requireEnv, PROJECT_ROOT } from '../_shared/env.mjs';
 import { hasCli, claudePing, codexPing, geminiPing } from '../_shared/cli.mjs';
+import { checkExport, REQUIRED_EXPORT_FILES, fontFamilies, palette, googleFontsUrl } from '../_shared/design-os.mjs';
 import requires from './requires.json' with { type: 'json' };
 
 // --- redaction layer -------------------------------------------------------
@@ -109,6 +110,33 @@ async function main() {
     return;
   }
   collectSecrets();
+
+  // 0. Design OS export. This is the pipeline's STARTING ASSUMPTION, so it is
+  //    checked before credentials: skills 02/03/04 read the palette, the fonts,
+  //    and the shell out of design/product-plan/ and have no brand of their own
+  //    to fall back on. An incomplete export is a halt, not a warning.
+  {
+    const x = checkExport();
+    if (!x.ok) {
+      fail('design os export',
+        `${x.missing.length}/${REQUIRED_EXPORT_FILES.length} required files missing under ${x.exportDir}: ` +
+        `${x.missing.join(', ')}. Run Design OS to completion and finish with its /export-product step — ` +
+        `supertools-design starts from that export.`);
+    } else {
+      // Present is not the same as usable: 02 needs font stacks, 04 needs a
+      // primary colour. Name what is unusable now rather than failing in 04.
+      const f = fontFamilies();
+      const p = palette();
+      const thin = [];
+      if (!f.heading && !f.body) thin.push('no --font-* stacks in tokens.css and no font role table in fonts.md');
+      if (!p.primary) thin.push('no primary colour token (--color-primary or --color-primary-<n>) in tokens.css');
+      thin.length
+        ? fail('design os export', `${x.exportDir} present but unusable: ${thin.join('; ')}`)
+        : pass('design os export',
+            `${x.present.length} required files; fonts from ${f.source}; ` +
+            `webfont sheet from ${googleFontsUrl().source}`);
+    }
+  }
 
   // 1. Env keys (required set). Resolution is against the MERGED environment
   //    (.env + machine env; machine wins) — that is what later skills see via

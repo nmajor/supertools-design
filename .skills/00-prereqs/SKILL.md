@@ -1,14 +1,35 @@
 ---
 name: 00-prereqs
-description: Verify every credential, CLI, and domain access is present before any other skill in the pipeline runs.
+description: Verify the Design OS export is complete and every credential, CLI, and domain access is present before any other skill in the pipeline runs.
 ---
 
 # 00 — Prereqs
 
 Fail loud if anything is missing. Every later skill assumes this passed.
 
+## The starting assumption
+
+**Design OS is already done.** This pipeline begins where `/export-product`
+ends: `design/product-plan/` is the canonical source for the palette, the
+typography, the shell, the product name, and the product's own description.
+No skill carries a brand of its own, so an incomplete export is a halt, not a
+degraded run.
+
+This skill is where that is enforced. It requires all of:
+
+- `design/product-plan/product-overview.md`
+- `design/product-plan/design-system/tokens.css`
+- `design/product-plan/design-system/fonts.md`
+- `design/product-plan/shell/components/AppShell.tsx`
+
+…and then checks the export is *usable*, not merely present: `tokens.css`
+must yield font stacks (`--font-heading` / `--font-body` / `--font-mono`, or a
+role table in `fonts.md`) and a primary colour (`--color-primary`, or any
+`--color-primary-<n>`). Skills 02, 03, and 04 read exactly those.
+
 ## What this checks
 
+- The Design OS export (above) — first, before credentials.
 - Every key in `requires.json` `envRequired` resolves in the **merged**
   environment (`.env` + machine env; machine wins on conflict — `loadEnv`
   never overrides process.env), which is exactly what later skills see. The
@@ -41,7 +62,9 @@ Fail loud if anything is missing. Every later skill assumes this passed.
 
 1. **Confirm the project domain with the user**, then run setup to persist it.
    The default suggestion comes from `CLAUDE.md` ("Primary domain: …"). Once
-   confirmed, write `.supertools-state/project.json`:
+   confirmed, write `.supertools-state/project.json`. setup.mjs refuses to run
+   at all until the Design OS export is complete, because `brandName` and
+   `context` are read out of `product-plan/product-overview.md`:
    ```sh
    # pass the user-confirmed domain explicitly:
    node .skills/00-prereqs/setup.mjs <domain>
@@ -79,7 +102,10 @@ Fail loud if anything is missing. Every later skill assumes this passed.
 
 ## Output
 
-- `.supertools-state/project.json` — `{ projectName, domain, domainSource, … }` (written by setup.mjs)
+- `.supertools-state/project.json` — `{ projectName, domain, domainSource,
+  brandName, context, … }` (written by setup.mjs; `brandName` and `context`
+  are read from the Design OS `product-overview.md` and each records its
+  source alongside it)
 - `.supertools-state/00-prereqs.json` — receipt
 
 ## Secret safety
@@ -108,6 +134,8 @@ The receipt is overwritten on each successful run.
 
 | Symptom | Fix |
 |---|---|
+| `design os export — ... required files missing` | Design OS has not been run to completion. Finish it, including `/export-product`, so `design/product-plan/` exists. There is no bypass — the pipeline has no fallback brand. |
+| `design os export — ... present but unusable` | The export exists but `design-system/tokens.css` declares no `--font-*` stacks or no primary colour. Re-run Design OS's `/design-tokens` step. |
 | `cf zone access (...) — Zone not in the platform CF account.` | The platform CF token's zone scope does not include this domain. Widen it at https://dash.cloudflare.com/profile/api-tokens ("All zones from an account"), or move the zone into the platform account. |
 | `polar sandbox — HTTP 401` | Mint a sandbox org token at https://sandbox.polar.sh (org settings → access tokens). Use a **dedicated org for this product**, not another project's. |
 | `dataforseo api — HTTP 401` | `DATAFORSEO_USERNAME`/`PASSWORD` wrong or absent from the machine env — re-export or add to `.env`. |

@@ -5,7 +5,7 @@
     "CLOUDFLARE_ACCOUNT_ID",
     "CLOUDFLARE_API_TOKEN",
     "AHASEND_ACCOUNT_ID",
-    "AHASEND_SECRET_KEY",
+    "AHASEND_API_KEY",
     "POLAR_SANDBOX_ACCESS_TOKEN",
     "OPENROUTER_API_KEY",
     "DATAFORSEO_USERNAME",
@@ -33,5 +33,5 @@
     "PORKBUN_SECRET_KEY"
   ],
   "cliRequired": ["node", "npm", "npx", "claude", "codex", "gemini"],
-  "provides": ["prereqs"]
+  "provides": ["prereqs", "design-os-export"]
 }

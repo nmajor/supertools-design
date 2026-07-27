@@ -48,9 +48,16 @@ export function loadEnv() {
     if (process.env[key]) continue;
     process.env[key] = raw.replace(/^["']|["']$/g, '');
   }
-  // Aliases used by code lifted from supertools-design.
+  // AHASEND_API_KEY is the canonical name (it is what every skill and
+  // requires.json asks for); AHASEND_SECRET_KEY is the legacy spelling still
+  // found in older .env files. Alias BOTH ways so a project that set either
+  // one satisfies every skill — the two names previously disagreed between
+  // 00-prereqs and 06-email-transactional.
   if (process.env.AHASEND_SECRET_KEY && !process.env.AHASEND_API_KEY) {
     process.env.AHASEND_API_KEY = process.env.AHASEND_SECRET_KEY;
+  }
+  if (process.env.AHASEND_API_KEY && !process.env.AHASEND_SECRET_KEY) {
+    process.env.AHASEND_SECRET_KEY = process.env.AHASEND_API_KEY;
   }
 }
 
