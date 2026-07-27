@@ -19,6 +19,14 @@ screen designs, and an export package. It deliberately leaves implementation
 choices to the agent that picks up the export. supertools-design picks up there
 and bakes in opinionated defaults so the next step can be a hands-off loop.
 
+**A finished Design OS export is the required starting point, not a suggestion.**
+`design/product-plan/` is the canonical source for the palette, the typography,
+the shell components, the product name, and the product's own description —
+skills read it through `_shared/design-os.mjs` and no skill carries a brand of
+its own. `00-prereqs` fails loudly, before any credential check, unless the
+export exists *and* actually yields font stacks and a primary colour. There is
+no degraded mode and no fallback brand.
+
 ## The pipeline
 
 Three tracks live in `.skills/`.
@@ -36,11 +44,11 @@ Three tracks live in `.skills/`.
 
 | ID | Provides |
 |----|----------|
-| `00-prereqs` | credential / CLI / domain gate for every later skill |
-| `01-project-init` | app scaffold from supertools-stack, git repo, `project.json` |
-| `02-design-tokens` | palette + fonts + CSS custom properties into Tailwind 4 |
-| `03-shell` | AppShell + MainNav + UserMenu + Footer |
-| `04-logo` | SVG wordmark + favicon / apple-touch / OG set |
+| `00-prereqs` | Design OS export gate + credential / CLI / domain gate for every later skill; writes `project.json` |
+| `01-project-init` | app scaffold from supertools-stack, git repo |
+| `02-design-tokens` | the export's palette + fonts + CSS custom properties into Tailwind 4 |
+| `03-shell` | the shell components the export ships, wired to the router |
+| `04-logo` | SVG wordmark + favicon / apple-touch / OG set, in the export's brand |
 | `05-domain-dns` | Cloudflare CAA baseline |
 | `06-email-transactional` | send domain + SPF/DKIM/DMARC + verified send key |
 | `07-email-mailboxes` | real mailboxes + inbound DNS |
@@ -90,7 +98,9 @@ before writing a new skill — it is distilled from real council rejections.
 ## Project identity
 
 No skill hardcodes a project name, brand, or domain. All three come from
-`<project>/.supertools-state/project.json`, read through `_shared/project.mjs`:
+`<project>/.supertools-state/project.json`, read through `_shared/project.mjs`
+(the brand's *look* comes from the Design OS export, read through
+`_shared/design-os.mjs`):
 
 ```json
 {
@@ -101,10 +111,14 @@ No skill hardcodes a project name, brand, or domain. All three come from
 }
 ```
 
-`brandName` defaults to a title-cased `projectName`. Skills needing richer
-settings (the `seo-*` track) ship a `config.example.json`; copy it to
-`config.<projectName>.json` and edit. The `*.example.json` files are the
-reference implementation's, kept as worked examples — not defaults to ship.
+`00-prereqs` writes this file, taking `brandName` and `context` from the
+export's `product-overview.md`; `brandName` falls back to a title-cased
+`projectName` only if the overview has no H1.
+
+Skills needing richer settings (the `seo-*` track) ship a
+`config.example.json`; copy it to `config.<projectName>.json` and edit. The
+`*.example.json` files are the reference implementation's, kept as worked
+examples — not defaults to ship.
 
 ## Install
 
@@ -152,6 +166,13 @@ build-council engine) plus the later, more-hardened versions of the skills the
 two had in common. It has been parameterized so a fresh project supplies its own
 identity — but the `*.example.json` configs and `DECISIONS.example.md` still
 carry the original product's content as worked examples.
+
+Skills `00`–`04` take every brand value from the Design OS export. The
+`seo-*` page templates (`seo-04-page-build/template.mjs`,
+`seo-05-internal-links/setup.mjs`) and the `09-forms` / `11-legal-pages`
+templates still carry the reference implementation's Tailwind classes and copy
+inline, and `08-support-chat` still sets a hardcoded widget colour — these have
+not been converted and will render in the wrong brand until they are.
 
 ## License
 

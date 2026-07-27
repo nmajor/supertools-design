@@ -100,14 +100,24 @@ whose review taught it.
 22. **Kill porting residue**: project names, old skill numbers, old paths —
     `grep -ri <source-project-name>` across the whole skill,
     including templates and generated files. *(13, _collab-review)*
+23. **Never embed a brand value.** No colour, hex, font family, tagline,
+    product description, or component list belongs in a skill. Read it from
+    the Design OS export via `_shared/design-os.mjs` or from `project.json`
+    via `_shared/project.mjs`; if the project supplies neither, fail loudly or
+    omit the output — never substitute a plausible-looking default.
+    **This binds verifiers too**: assert consistency with the project's own
+    export, never a named font or hex. `02/verify.mjs` once asserted Fraunces
+    and `--color-primary-900: #881337`, so it could only pass for the one
+    brand it was written from, and every other project's correct tokens read
+    as a failure. *(02/03/04, design-os-first refactor)*
 
 ## Process
 
-23. **Run the lifecycle in order and let it catch you**: setup → verify →
+24. **Run the lifecycle in order and let it catch you**: setup → verify →
     candidate → in-line council (≤3 rounds/cycle) → collab review → finalize.
     On rejection, fix the SKILL (not just the output) and re-enter at setup.
     Exercise every fix LIVE (force a re-run) — "the code now does X" without
     a captured run demonstrating X is an overclaim. *(01, 08)*
-24. **Transient reviewer failures happen** (empty gemini stdout, codex CLI
+25. **Transient reviewer failures happen** (empty gemini stdout, codex CLI
     version drift after node switches — `npm i -g @openai/codex@latest &&
     asdf reshim nodejs`). Re-run the gate; don't mark unclear as approved.
