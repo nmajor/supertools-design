@@ -6,50 +6,54 @@
 import fs from 'node:fs/promises';
 import path from 'node:path';
 import { loadEnv, PROJECT_ROOT } from '../_shared/env.mjs';
+import {
+  requireExport, TOKENS_CSS, fontFamilies, googleFontsUrl, familiesInUrl, parseTokens,
+} from '../_shared/design-os.mjs';
 
 const STATE_SUB   = path.join(PROJECT_ROOT, '.supertools-state', '02-design-tokens');
 const STYLES_PATH = path.join(PROJECT_ROOT, 'src', 'styles.css');
-const TOKENS_PATH = path.join(PROJECT_ROOT, 'design', 'product-plan', 'design-system', 'tokens.css');
-
-// Typography defaults. The portable :root color tokens come from the Design OS
-// export (TOKENS_PATH); the type stack does not, so these are the fallback.
-// Override per project with design/product-plan/design-system/fonts.json:
-//   { "url": "https://fonts.googleapis.com/css2?...", "theme": "@theme { ... }" }
-// The values below are the reference implementation's (Fraunces / DM Sans /
-// IBM Plex Mono) — replace them for your own brand.
-const DEFAULT_FONTS_URL =
-  'https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght@' +
-  '0,9..144,400;0,9..144,500;0,9..144,600;0,9..144,700;' +
-  '1,9..144,500;1,9..144,600;1,9..144,700' +
-  '&family=DM+Sans:opsz,wght@9..40,400;9..40,500;9..40,600;9..40,700' +
-  '&family=IBM+Plex+Mono:wght@400;500&display=swap';
-
-const DEFAULT_THEME = `@theme {
-  --font-sans:  "DM Sans", ui-sans-serif, system-ui, sans-serif;
-  --font-serif: "Fraunces", Georgia, serif;
-  --font-mono:  "IBM Plex Mono", ui-monospace, SFMono-Regular, Menlo, monospace;
-}`;
+const TOKENS_PATH = TOKENS_CSS;
 
 const BEGIN_MARKER = '/* === supertools 02-design-tokens BEGIN === */';
 const END_MARKER   = '/* === supertools 02-design-tokens END === */';
 
-const FONTS_OVERRIDE_PATH = path.join(
-  PROJECT_ROOT, 'design', 'product-plan', 'design-system', 'fonts.json'
-);
+// Build Tailwind 4's `@theme` typography map from the project's own font
+// stacks. Tailwind's utility names are fixed (font-sans / font-serif /
+// font-mono), so the three design-system ROLES are bound to them:
+//
+//   --font-sans  ← the body face
+//   --font-serif ← the heading/display face, whether or not it is a serif.
+//                  The `font-serif` utility is what this pipeline's page
+//                  templates use for headings, so the binding is by role.
+//   --font-mono  ← the mono face
+//
+// A role the export does not define is simply omitted — Tailwind keeps its
+// own default for it rather than inheriting another project's brand.
+function buildThemeBlock(families) {
+  const lines = [];
+  if (families.body)    lines.push(`  --font-sans:  ${families.body};`);
+  if (families.heading) lines.push(`  --font-serif: ${families.heading};`);
+  if (families.mono)    lines.push(`  --font-mono:  ${families.mono};`);
+  return `@theme {\n${lines.join('\n')}\n}`;
+}
 
-// Per-project typography override, if the Design OS export supplies one.
-async function resolveFonts() {
-  try {
-    const j = JSON.parse(await fs.readFile(FONTS_OVERRIDE_PATH, 'utf-8'));
-    return {
-      fontsUrl: j.url || DEFAULT_FONTS_URL,
-      theme: j.theme || DEFAULT_THEME,
-      source: 'product-plan/design-system/fonts.json',
-    };
-  } catch (e) {
-    if (e.code !== 'ENOENT') throw e;
-    return { fontsUrl: DEFAULT_FONTS_URL, theme: DEFAULT_THEME, source: 'defaults' };
+// Typography comes from the Design OS export, never from a literal here.
+// Fonts: design-system/fonts.json { "url": … } → the Google Fonts <link> in
+// design-system/fonts.md → none. Families: tokens.css --font-* → the fonts.md
+// role table. If the export declares no webfont sheet, none is written; the
+// scaffold's own @import is removed rather than replaced with someone else's.
+function resolveFonts() {
+  const families = fontFamilies();
+  if (!families.heading && !families.body && !families.mono) {
+    die(
+      `No font stacks found in the Design OS export.\n` +
+      `  Expected --font-heading / --font-body / --font-mono in ${TOKENS_PATH},\n` +
+      `  or a "Font usage" role table in design-system/fonts.md.\n` +
+      `  Re-run Design OS's /design-tokens step.`
+    );
   }
+  const { url, source } = googleFontsUrl();
+  return { fontsUrl: url, fontsUrlSource: source, families, theme: buildThemeBlock(families) };
 }
 
 const log = (...a) => console.log(...a);
@@ -66,8 +70,11 @@ async function main() {
   );
   if (prior.status !== 'ok') die('01-project-init not ok; halting');
 
-  const { fontsUrl, theme, source: fontsSource } = await resolveFonts();
-  log(`▶ Typography from ${fontsSource}`);
+  try { requireExport(); } catch (e) { die(e.message); }
+
+  const { fontsUrl, fontsUrlSource, families, theme } = resolveFonts();
+  log(`▶ Font stacks from ${families.source}`);
+  log(`▶ Webfont sheet from ${fontsUrlSource}`);
 
   let styles;
   try { styles = await fs.readFile(STYLES_PATH, 'utf-8'); }
@@ -79,15 +86,25 @@ async function main() {
   let next = styles;
   const actions = [];
 
-  // 1. Replace any existing fonts.googleapis.com @import
-  const fontsImportRe = /@import\s+url\("https:\/\/fonts\.googleapis\.com[^"]*"\)\s*;?/g;
-  const fontsLine = `@import url("${fontsUrl}");`;
-  if (fontsImportRe.test(next)) {
-    next = next.replace(fontsImportRe, fontsLine);
-    actions.push('replaced existing Google Fonts @import');
+  // 1. Point the Google Fonts @import at the export's sheet. If the design
+  //    system declares no webfonts, the scaffold's own @import is DELETED
+  //    rather than left in place — shipping another project's fonts is worse
+  //    than shipping none.
+  const fontsImportRe = /@import\s+url\("https:\/\/fonts\.googleapis\.com[^"]*"\)\s*;?\n?/g;
+  if (fontsUrl) {
+    const fontsLine = `@import url("${fontsUrl}");`;
+    if (fontsImportRe.test(next)) {
+      next = next.replace(fontsImportRe, fontsLine + '\n');
+      actions.push('replaced existing Google Fonts @import');
+    } else {
+      next = fontsLine + '\n' + next;
+      actions.push('prepended Google Fonts @import');
+    }
+  } else if (fontsImportRe.test(next)) {
+    next = next.replace(fontsImportRe, '');
+    actions.push('removed the scaffold Google Fonts @import (export declares no webfonts)');
   } else {
-    next = fontsLine + '\n' + next;
-    actions.push('prepended Google Fonts @import');
+    actions.push('no Google Fonts @import (export declares no webfonts)');
   }
 
   // 2. Replace the @theme block (assumes one top-level @theme — true for the C3 scaffold)
@@ -122,11 +139,16 @@ async function main() {
     stylesPath: STYLES_PATH,
     bytesBefore: styles.length,
     bytesAfter: next.length,
+    designOsExport: {
+      tokensCss: TOKENS_PATH,
+      fontStacksFrom: families.source,
+      webfontSheetFrom: fontsUrlSource,
+    },
     fontsUrl,
-    fontsSource,
     // Derived from what was actually written, not assumed.
-    fontFamilies: [...new Set([...fontsUrl.matchAll(/family=([^:&]+)/g)]
-      .map((m) => decodeURIComponent(m[1]).replace(/\+/g, ' ')))],
+    webfontFamilies: familiesInUrl(fontsUrl),
+    fontRoles: { heading: families.heading, body: families.body, mono: families.mono },
+    tokensDeclared: [...parseTokens(tokens).keys()],
     actions,
     completedAt: new Date().toISOString(),
   };
