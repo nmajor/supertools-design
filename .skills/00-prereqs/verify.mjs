@@ -21,6 +21,7 @@ import path from 'node:path';
 import { loadEnv, requireEnv, PROJECT_ROOT } from '../_shared/env.mjs';
 import { hasCli, claudePing, codexPing, geminiPing } from '../_shared/cli.mjs';
 import { checkExport, REQUIRED_EXPORT_FILES, fontFamilies, palette, googleFontsUrl } from '../_shared/design-os.mjs';
+import { diagnoseZoneAccess, zoneAccessMessage } from '../_shared/cf.mjs';
 import requires from './requires.json' with { type: 'json' };
 
 // --- redaction layer -------------------------------------------------------
@@ -175,21 +176,23 @@ async function main() {
   try { project = await readProject(); pass('project.json', `domain=${project.domain}`); }
   catch (e) { fail('project.json', `Run SKILL.md step 1 to create .supertools-state/project.json: ${e.message}`); }
 
-  // 5. Cloudflare PLATFORM zone read for the project domain
+  // 5. Cloudflare PLATFORM zone read for the project domain.
+  //    The project domain is not necessarily an apex — deploying to a
+  //    subdomain of a zone you already own is the correct pre-launch pattern
+  //    before the apex is bought. Resolve the nearest zone that serves the
+  //    host, and on failure say which of the three real problems it is.
   if (project?.domain) {
-    await probe(
-      `cf zone access (${project.domain})`,
-      `https://api.cloudflare.com/client/v4/zones?name=${encodeURIComponent(project.domain)}&account.id=${process.env.CLOUDFLARE_ACCOUNT_ID}`,
-      { headers: { Authorization: `Bearer ${process.env.CLOUDFLARE_API_TOKEN}` } },
-      (r, body) => {
-        if (!r.ok) return `HTTP ${r.status} ${body.slice(0, 200)}`;
-        const j = JSON.parse(body);
-        if (!j.result?.length) {
-          return 'Zone not in the platform CF account. Widen the token at https://dash.cloudflare.com/profile/api-tokens (set "All zones from an account") or move the zone in.';
-        }
-        return true;
+    try {
+      const d = await diagnoseZoneAccess(project.domain);
+      if (d.ok) {
+        pass(`cf zone access (${project.domain})`,
+          d.exact ? `zone ${d.zone.name}` : `zone ${d.zone.name} (host ${project.domain})`);
+      } else {
+        fail(`cf zone access (${project.domain})`, zoneAccessMessage(project.domain, d));
       }
-    );
+    } catch (e) {
+      fail(`cf zone access (${project.domain})`, e.message);
+    }
   } else {
     fail('cf zone access', 'skipped — no project.json domain to check');
   }
