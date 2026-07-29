@@ -34,7 +34,7 @@ consistency with the project's own export, never a named font or hex.
 
 ### Not yet converted — known brand leaks
 
-Skills `00`–`04` follow the rule above. These do not, and will render in the
+Skills `00`–`04` follow the rule above. (Until this change `02/verify.mjs` and `03` carried a font name, a brand hex and a product tagline in COMMENTS — comments are part of the skill, so those are now neutral descriptions.) These do not, and will render in the
 reference implementation's brand until someone fixes them:
 
 | Where | What leaks |
@@ -59,7 +59,8 @@ ad hoc against any artifact, not as pipeline steps.
 ### Bootstrap pipeline (`00`–`17`) — runs in dependency order
 
 ```
-00 prereqs ─┬─ 01 init ─ 02 design-tokens ─ 03 shell ─ 04 logo
+00 prereqs ─┬─ 01 init ─┬─ 02 design-tokens ─ 03 shell ─ 04 logo
+            │           └─ (01b r2-storage — OPTIONAL, only if the product stores objects)
             │              ├─ 09 forms · 10 analytics · 11 legal · 13 uptime
             ├─ 05 domain-dns ─┬─ 06 email-transactional
             │                 ├─ 07 email-mailboxes ─ 08 support-chat ─ 09 forms
@@ -71,6 +72,7 @@ ad hoc against any artifact, not as pipeline steps.
 |----|----------|
 | 00-prereqs           | Design OS export gate + credential / CLI / domain gate for every later skill |
 | 01-project-init      | TanStack Start + CF Workers scaffold, git repo |
+| 01b-r2-storage       | **optional** — R2 bucket + preview bucket, bound in wrangler.jsonc, proven by an object round-trip |
 | 02-design-tokens     | the export's palette + fonts + CSS vars into Tailwind 4 |
 | 03-shell             | the shell components the export ships, wired to the router |
 | 04-logo              | SVG wordmark + favicon/OG set, drawn in the export's brand |

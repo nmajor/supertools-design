@@ -1,6 +1,6 @@
 ---
 name: 03-shell
-description: Replace the scaffold's demo Header/Footer/ThemeToggle with the shell components the Design OS export ships; wire onNavigate to TanStack Router; clean up the scaffold's demo CSS.
+description: Install the shell components the Design OS export ships, plus the design kit they import; wire the export's own callbacks to TanStack Router; retire scaffold demo chrome that nothing still references; reduce src/styles.css to a clean minimum.
 ---
 
 # 03 — Shell
@@ -23,27 +23,49 @@ out of the file 02 wrote instead of declaring its own copy.
 - `.supertools-state/02-design-tokens.json` (status: ok)
 - `design/product-plan/shell/components/*.{tsx,ts}` — must include
   `AppShell.tsx` and `index.ts`
+- `design/product-plan/design-system/kit/*.{ts,tsx}` — optional; copied when
+  present, because the shell components import it
 - `src/styles.css` as skill 02 left it (the `@theme` block and the
   `BEGIN`/`END` token markers)
 
 ## What setup.mjs does
 
-1. **Installs `@radix-ui/react-dropdown-menu`** (used by `UserMenu`).
-2. **Copies every component the export ships** from
-   `design/product-plan/shell/components/` to `src/components/shell/`.
-   Verbatim — these are framework-agnostic, props-based.
-3. **Deletes scaffold demos**: `src/components/{Header, Footer, ThemeToggle}.tsx`.
-4. **Rewrites `src/routes/__root.tsx`** to wrap `{children}` with `<AppShell>`,
-   via a small `AppShellWrapper` that consumes TanStack Router's `useNavigate`
-   for the `onNavigate` / `onSignIn` callbacks. `user={null}` for now — auth
-   wires into skill 15 (ralph-build). `<title>` set to the brand name from `project.json`.
-5. **Rewrites `src/styles.css`** to a clean minimum: skill 02's webfont
-   `@import` and `@theme` typography map carried across verbatim,
-   `@import "tailwindcss"`, `@plugin "@tailwindcss/typography"`, a tiny
-   box-sizing/body reset, and skill 02's `:root` token block (extracted via
-   its BEGIN/END markers). The lagoon/sea/island-shell demo CSS the scaffold
-   shipped is dropped. Halts if the `@theme` block is missing rather than
-   substituting a default.
+1. **Copies the export's design kit** from `design-system/kit/` to `src/kit/`,
+   when the export ships one. The shell components import it from *outside*
+   `shell/components/`, so copying only the components leaves those imports
+   dangling and the project does not typecheck.
+2. **Copies every component the export ships** to `src/components/shell/`,
+   rewriting `../../design-system/kit/*` imports to the `@/kit/*` alias the
+   scaffold's `tsconfig.json` already maps to `./src/*`. Throws if any
+   `design-system/kit` reference survives the rewrite.
+3. **Installs whatever the copied files import.** The package list is derived
+   from the files, not held here — an earlier version installed one hardcoded
+   Radix package, and any export importing anything else failed to build.
+   Already-satisfied imports are reported and skipped.
+4. **Retires scaffold demo chrome, but only when nothing references it.**
+   `SCAFFOLD_DEMOS` names candidates; each is deleted only if no file in the
+   project imports it (searching `import`/`export ... from`, bare imports,
+   dynamic `import()`, `require()`, and specifiers with extensions or
+   `?query`). A referenced candidate is kept and its referrers logged.
+5. **Rewrites `src/routes/__root.tsx`** to wrap `{children}` in `<AppShell>`.
+   The wrapper passes **only callbacks the export's own `AppShellProps`
+   declares** — `onNavigate`/`onSignIn`/`onNavigateStage`/`onSelectShort` are
+   wired to TanStack Router, and known open/logout callbacks get stubs. Data
+   props are deliberately left unset: there is no app yet, and inventing values
+   would be this skill holding a design opinion. `useNavigate` is imported only
+   if something needs it. `<title>` is the brand from `project.json`, emitted
+   via `JSON.stringify` so a name containing a quote cannot break the file.
+6. **Rewrites `src/styles.css`** to a clean minimum: every `@import`/`@plugin`
+   directive already in the file carried across in order, skill 02's `@theme`
+   block, and skill 02's token block (via its BEGIN/END markers). The
+   scaffold's demo CSS is dropped. Halts if the `@theme` block is missing
+   rather than substituting a default. **No reset is emitted** — the previous
+   box-sizing/body/font-smoothing reset was a design opinion and is gone.
+
+   Directives are found with a scanner, not a regex: the terminating `;` has to
+   be located outside strings, comments and parentheses. A plain `[^;]+;` cut
+   the webfont sheet at the first semicolon inside its own quoted URL and the
+   build died with `CssSyntaxError: Unterminated string`.
 
 ## Steps
 
@@ -60,22 +82,32 @@ out of the file 02 wrote instead of declaring its own copy.
 ## Verifier checks
 
 - Every shell component the export ships exists at `src/components/shell/`.
-- Three scaffold demo files gone.
-- `@radix-ui/react-dropdown-menu` in `dependencies`.
+- Each scaffold demo candidate is **either** gone **or** still referenced by
+  something, with the referrers named. Asserting unconditional removal was
+  wrong — the scaffold's marketing layout imports `Footer`, and deleting it
+  broke the build. The invariant is a consistent project, not an absent file.
 - `__root.tsx` imports `AppShell` and uses `useNavigate`.
-- `src/styles.css` has no lagoon/sea/island-shell selectors; still carries
-  every custom property the export's `tokens.css` declares, and still has an
-  `@theme` block.
+- `src/styles.css` has no scaffold demo selectors; still carries every custom
+  property the export's `tokens.css` declares, and still has an `@theme` block.
 - `npm run build` green, `npx tsc --noEmit` green.
-- `vite dev` GET `/` returns 2xx and the HTML contains the brand name from
-  `project.json`.
+- `vite dev` GET `/` returns 2xx and the **rendered `<body>`** contains the
+  brand from `project.json`. Body, not the whole document: `__root.tsx` puts
+  the brand in `<title>`, so searching the full HTML passed whether or not the
+  shell rendered at all.
+
+> **Known gap.** The verifier still asserts `@radix-ui/react-dropdown-menu` is
+> in `dependencies`. That is a leftover from the hardcoded-install era: setup
+> now installs what the export imports, so an export that never imports Radix
+> will fail this check even though nothing is wrong. Fix by asserting instead
+> that every external import of the copied files resolves.
 
 ## Output
 
 - `src/components/shell/` (one file per component in the export).
+- `src/kit/` when the export ships `design-system/kit/`.
 - `src/routes/__root.tsx` rewritten.
 - `src/styles.css` rewritten clean.
-- `package.json` adds `@radix-ui/react-dropdown-menu`.
+- `package.json` gains whatever the copied files import and it lacked.
 - `.supertools-state/03-shell.json` receipt.
 - Raw artifacts under `.supertools-state/03-shell/`:
   - `__root.tsx.before.txt`, `styles.css.before.txt` — pre-patch snapshots
@@ -83,9 +115,13 @@ out of the file 02 wrote instead of declaring its own copy.
 
 ## Idempotency
 
-Re-runnable. setup.mjs overwrites the shell component files (canonical source
-is `design/product-plan/shell/`), checks the dep list before npm-installing,
-and the styles.css rewrite produces the same output each run.
+Re-runnable. setup.mjs overwrites the shell and kit files (canonical source is
+the export), installs only packages that are missing, and the styles.css
+rewrite produces the same output each run. Demo retirement is stable: a file
+already deleted stays deleted, a referenced one stays kept.
+
+The module carries an entry-point guard, so importing it does not run a
+scaffold as a side effect (authoring-checklist rule 15).
 
 ## Common failure modes
 

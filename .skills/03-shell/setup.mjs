@@ -5,9 +5,10 @@
 import fs from 'node:fs/promises';
 import path from 'node:path';
 import { spawnSync } from 'node:child_process';
+import { createRequire } from 'node:module';
 import { loadEnv, PROJECT_ROOT } from '../_shared/env.mjs';
 import { readProject } from '../_shared/project.mjs';
-import { requireExport, SHELL_DIR, shellComponentFiles } from '../_shared/design-os.mjs';
+import { requireExport, EXPORT_DIR, SHELL_DIR, shellComponentFiles } from '../_shared/design-os.mjs';
 
 const STATE_SUB    = path.join(PROJECT_ROOT, '.supertools-state', '03-shell');
 const SHELL_SRC    = SHELL_DIR;
@@ -16,12 +17,74 @@ const ROOT_TSX     = path.join(PROJECT_ROOT, 'src', 'routes', '__root.tsx');
 const STYLES_PATH  = path.join(PROJECT_ROOT, 'src', 'styles.css');
 const PACKAGE_JSON = path.join(PROJECT_ROOT, 'package.json');
 
+// Demo chrome the scaffold ships that the export's shell replaces. Header.tsx
+// and ThemeToggle.tsx were in this list historically and no longer exist in
+// supertools-stack@80dd8792 — deletion tolerates ENOENT, so stale names are
+// harmless, but do not treat this list as a description of the current
+// scaffold. MarketingNav is deliberately NOT deleted: it is the marketing-page
+// nav, not app chrome, and 11-legal-pages still renders it.
 const SCAFFOLD_DEMOS = ['Header.tsx', 'Footer.tsx', 'ThemeToggle.tsx'];
 
 const BEGIN_MARKER = '/* === supertools 02-design-tokens BEGIN === */';
 const END_MARKER   = '/* === supertools 02-design-tokens END === */';
 
-const NEW_ROOT_TSX = (brandName) => `import { HeadContent, Scripts, createRootRoute, useNavigate } from '@tanstack/react-router'
+// Which props AppShell takes is the EXPORT's call, not this skill's. An
+// earlier version hardcoded `user={null} navigationItems={[]} onNavigate={...}`,
+// which are the props of the shell the skill was written against — against any
+// other export that is a type error, and it produced a project that would not
+// typecheck or build. Read the interface and pass only what it declares.
+function shellWrapperFor(appShellSource) {
+  const m = appShellSource.match(/export interface AppShellProps\s*\{([\s\S]*?)\n\}/);
+  if (!m) {
+    // No parseable interface — pass children only. Always valid.
+    return {
+      body: '  return <AppShell>{children}</AppShell>',
+      passed: [],
+      needsNavigate: false,
+    };
+  }
+  const declared = new Set(
+    [...m[1].matchAll(/^\s*(\w+)\??\s*:/gm)].map((x) => x[1]),
+  );
+
+  // Only wire callbacks whose meaning is unambiguous at this stage. Data props
+  // (the selected item, its status, the user) are deliberately left unset:
+  // there is no app yet, and inventing values here would be this skill holding
+  // a design opinion. Auth and real navigation land in the ralph-build skill.
+  const lines = [];
+  let needsNavigate = false;
+  if (declared.has('onNavigate')) {
+    lines.push('      onNavigate={(href: string) => navigate({ to: href as never })}');
+    needsNavigate = true;
+  }
+  if (declared.has('onSignIn')) {
+    lines.push("      onSignIn={() => navigate({ to: '/login' as never })}");
+    needsNavigate = true;
+  }
+  // A stage-based shell navigates by stage id rather than by href. The route
+  // for each stage may not exist until the app is built; wiring it now is
+  // still correct, because the shell's job is to say WHERE it wants to go.
+  if (declared.has('onNavigateStage')) {
+    lines.push('      onNavigateStage={(stage: string) => navigate({ to: `/${stage}` as never })}');
+    needsNavigate = true;
+  }
+  if (declared.has('onSelectShort')) {
+    lines.push('      onSelectShort={(id: string) => navigate({ to: `/shorts/${id}` as never })}');
+    needsNavigate = true;
+  }
+  const stubs = ['onLogout', 'onOpenSettings', 'onOpenShortcuts', 'onOpenShorts'];
+  for (const s of stubs) {
+    if (declared.has(s)) lines.push(`      ${s}={() => { /* wired when the app lands */ }}`);
+  }
+
+  const body = lines.length
+    ? `${needsNavigate ? '  const navigate = useNavigate()\n' : ''}  return (\n    <AppShell\n${lines.join('\n')}\n    >\n      {children}\n    </AppShell>\n  )`
+    : '  return <AppShell>{children}</AppShell>';
+
+  return { body, passed: lines.length, needsNavigate };
+}
+
+const NEW_ROOT_TSX = (brandName, shellWrapperBody, needsNavigate) => `import { HeadContent, Scripts, createRootRoute${needsNavigate ? ', useNavigate' : ''} } from '@tanstack/react-router'
 import { TanStackRouterDevtoolsPanel } from '@tanstack/react-router-devtools'
 import { TanStackDevtools } from '@tanstack/react-devtools'
 import { AppShell } from '../components/shell'
@@ -33,7 +96,7 @@ export const Route = createRootRoute({
     meta: [
       { charSet: 'utf-8' },
       { name: 'viewport', content: 'width=device-width, initial-scale=1' },
-      { title: '${brandName}' },
+      { title: ${JSON.stringify(brandName)} },
     ],
     links: [
       { rel: 'stylesheet', href: appCss },
@@ -63,18 +126,7 @@ function RootDocument({ children }: { children: React.ReactNode }) {
 }
 
 function AppShellWrapper({ children }: { children: React.ReactNode }) {
-  const navigate = useNavigate()
-  return (
-    <AppShell
-      user={null}
-      navigationItems={[]}
-      onNavigate={(href) => navigate({ to: href as never })}
-      onSignIn={() => navigate({ to: '/login' as never })}
-      onLogout={() => { /* wired in skill 15 (ralph-build) when auth lands */ }}
-    >
-      {children}
-    </AppShell>
-  )
+${shellWrapperBody}
 }
 `;
 
@@ -109,42 +161,257 @@ function run(cmd, args, opts = {}) {
   return r;
 }
 
-async function ensureRadixDep() {
-  const pkg = JSON.parse(await fs.readFile(PACKAGE_JSON, 'utf-8'));
-  if (pkg.dependencies?.['@radix-ui/react-dropdown-menu']) {
-    log('  @radix-ui/react-dropdown-menu already in dependencies');
-    return;
+// Which third-party packages the shell needs is the EXPORT's call, not this
+// skill's. An earlier version installed one hardcoded package; a later one
+// scanned with a regex that missed dynamic import(), require() and TypeScript
+// import-equals. Both shipped projects that could not build.
+//
+// Module specifiers are extracted with TypeScript's own preProcessFile, which
+// is the API designed for exactly this and understands every import form the
+// language has. TypeScript is a scaffold devDependency, so it resolves from
+// PROJECT_ROOT. If it cannot be loaded we HALT rather than fall back to a
+// regex — a silent under-detection here is what breaks the build.
+let _ts = null;
+async function typescriptModule() {
+  if (_ts) return _ts;
+  const req = createRequire(path.join(PROJECT_ROOT, 'noop.js'));
+  try { _ts = req('typescript'); }
+  catch (e) {
+    die('Could not load "typescript" from the project — it is required to detect the export imports safely. ' +
+        'Install it (the scaffold normally has it as a devDependency) and re-run. Original error: ' + e.message);
   }
-  run('npm', ['install', '--no-fund', '--no-audit', '@radix-ui/react-dropdown-menu']);
+  return _ts;
+}
+
+async function moduleSpecifiersOf(source, fileName) {
+  const ts = await typescriptModule();
+  // detectJavaScriptImports=true so require() and dynamic import() are included.
+  const pre = ts.preProcessFile(source, /*readImportFiles*/ true, /*detectJavaScriptImports*/ true);
+  const specs = new Set((pre.importedFiles || []).map((f) => f.fileName));
+
+  // preProcessFile does not report `require.resolve('x')` — it is a path
+  // lookup rather than an import, but it is still a real reference to the
+  // module, and deleting the file it names would break the caller. Add it as a
+  // narrow, named supplement rather than reintroducing a general regex scan.
+  for (const m of source.matchAll(/\brequire\s*\.\s*resolve\s*\(\s*['"`]([^'"`]+)['"`]/g)) {
+    specs.add(m[1]);
+  }
+  return [...specs];
+}
+
+async function externalImportsOf(source, fileName) {
+  const found = new Set();
+  for (const spec of await moduleSpecifiersOf(source, fileName)) {
+    // Skip relative paths, the project's own aliases, and protocol specifiers.
+    if (spec.startsWith('.') || spec.startsWith('/') || spec.startsWith('@/') ||
+        spec.startsWith('#/') || spec.includes(':')) continue;
+    const parts = spec.split('/');
+    found.add(spec.startsWith('@') ? parts.slice(0, 2).join('/') : parts[0]);
+  }
+  return found;
+}
+
+async function ensureExportDeps(files) {
+  const pkg = JSON.parse(await fs.readFile(PACKAGE_JSON, 'utf-8'));
+  const have = new Set([
+    ...Object.keys(pkg.dependencies || {}),
+    ...Object.keys(pkg.devDependencies || {}),
+  ]);
+
+  const needed = new Set();
+  for (const abs of files) {
+    for (const spec of await externalImportsOf(await fs.readFile(abs, 'utf-8'), abs)) needed.add(spec);
+  }
+
+  const missing = [...needed].filter((p) => !have.has(p)).sort();
+  if (!missing.length) {
+    log(`  all ${needed.size} external import(s) already satisfied: ${[...needed].sort().join(', ')}`);
+    return [];
+  }
+  log(`  export needs ${missing.length} package(s) not in package.json: ${missing.join(', ')}`);
+  run('npm', ['install', '--no-fund', '--no-audit', ...missing]);
+  return missing;
+}
+
+// The export's shell components import a shared design kit that lives OUTSIDE
+// shell/components/ — `../../design-system/kit/tokens` and `.../primitives`.
+// Copying only shell/components/ leaves those imports dangling, so the kit is
+// copied too and the imports are rewritten to the `@/` alias the scaffold's
+// tsconfig already maps to ./src/*. Without this, 03 produces a project that
+// does not typecheck.
+const KIT_SRC = path.join(EXPORT_DIR, 'design-system', 'kit');
+const KIT_DEST = path.join(PROJECT_ROOT, 'src', 'kit');
+const KIT_IMPORT_RE = /(['"])(?:\.\.\/)+design-system\/kit\/([A-Za-z0-9_-]+)\1/g;
+
+async function copyDesignKit() {
+  let entries;
+  try { entries = await fs.readdir(KIT_SRC); }
+  catch { log('  (export ships no design-system/kit; nothing to copy)'); return []; }
+
+  const files = entries.filter((f) => /\.(ts|tsx)$/.test(f));
+  if (!files.length) { log('  (design-system/kit has no .ts/.tsx files)'); return []; }
+
+  await fs.mkdir(KIT_DEST, { recursive: true });
+  for (const f of files) {
+    // Kit files may reference each other by relative path; those stay valid
+    // because the whole directory moves together.
+    await fs.copyFile(path.join(KIT_SRC, f), path.join(KIT_DEST, f));
+    log(`  copied src/kit/${f}`);
+  }
+  return files;
 }
 
 async function copyShellComponents(shellFiles) {
   await fs.mkdir(SHELL_DEST, { recursive: true });
+  let rewritten = 0;
   for (const f of shellFiles) {
     const content = await fs.readFile(path.join(SHELL_SRC, f), 'utf-8');
-    await fs.writeFile(path.join(SHELL_DEST, f), content);
-    log(`  copied src/components/shell/${f}`);
+    const next = content.replace(KIT_IMPORT_RE, (_m, q, mod) => `${q}@/kit/${mod}${q}`);
+    if (next !== content) rewritten++;
+    await fs.writeFile(path.join(SHELL_DEST, f), next);
+    log(`  copied src/components/shell/${f}${next !== content ? ' (kit imports -> @/kit/*)' : ''}`);
   }
+  // Fail loudly rather than shipping a component with an unresolvable import.
+  for (const f of shellFiles) {
+    const written = await fs.readFile(path.join(SHELL_DEST, f), 'utf-8');
+    if (/design-system\/kit/.test(written)) {
+      throw new Error(`${f} still imports design-system/kit after rewrite — refusing to continue.`);
+    }
+  }
+  return rewritten;
+}
+
+// Walk src/ collecting every file that could import a component.
+// Scan the whole project, not just src/ — a route, a script or a config file
+// outside src/ can import a component just as well, and deleting something
+// they use breaks the build all the same.
+const SCAN_SKIP = new Set(['node_modules', '.git', '.wrangler', '.output', '.tanstack', 'dist', 'design', '.skills', '.supertools-state']);
+async function sourceFilesUnder(dir, acc = []) {
+  let entries;
+  try { entries = await fs.readdir(dir, { withFileTypes: true }); } catch { return acc; }
+  for (const e of entries) {
+    if (SCAN_SKIP.has(e.name)) continue;
+    const p = path.join(dir, e.name);
+    if (e.isDirectory()) await sourceFilesUnder(p, acc);
+    else if (/\.(ts|tsx|js|jsx|mjs|cjs)$/.test(e.name)) acc.push(p);
+  }
+  return acc;
+}
+
+// Does anything still reference this component?
+//
+// Deletion is irreversible within a run, so this must not miss a reference.
+// Two regex generations already did: the first matched only `from ".../Name"`,
+// the second still missed `import(/* @vite-ignore */ './x')` and
+// require.resolve(). Specifiers now come from TypeScript's preProcessFile, so
+// every import form the language supports is covered, and each one is resolved
+// against the real path on disk rather than string-matched.
+async function referrersOf(fileName, ownPath, files) {
+  const ownResolved = path.resolve(ownPath);
+  const ownNoExt = ownResolved.replace(/\.(tsx?|jsx?)$/, '');
+  const hits = [];
+  for (const sf of files) {
+    if (path.resolve(sf) === ownResolved) continue;
+    const text = await fs.readFile(sf, 'utf-8');
+    let specs;
+    try { specs = await moduleSpecifiersOf(text, sf); }
+    catch { specs = []; }
+    for (const spec of specs) {
+      if (!spec.startsWith('.')) continue;               // only relative can reach it
+      const bare = spec.replace(/\?.*$/, '');            // drop ?query
+      const abs = path.resolve(path.dirname(sf), bare);
+      const absNoExt = abs.replace(/\.(tsx?|jsx?)$/, '');
+      if (absNoExt === ownNoExt || abs === ownResolved) {
+        hits.push(path.relative(PROJECT_ROOT, sf));
+        break;
+      }
+    }
+  }
+  return hits;
 }
 
 async function deleteScaffoldDemos() {
+  const deleted = [];
+  const kept = [];
+  const srcFiles = await sourceFilesUnder(PROJECT_ROOT);
+
   for (const f of SCAFFOLD_DEMOS) {
     const p = path.join(PROJECT_ROOT, 'src', 'components', f);
-    try {
-      await fs.unlink(p);
-      log(`  deleted src/components/${f}`);
-    } catch (e) {
-      if (e.code !== 'ENOENT') throw e;
-      log(`  src/components/${f} already gone`);
+    try { await fs.access(p); }
+    catch { log(`  src/components/${f} already gone`); continue; }
+
+    // Deleting a component the rest of the scaffold still imports breaks the
+    // build. Footer.tsx is the real case: it is app chrome the export's shell
+    // replaces, but it is ALSO imported by the scaffold's marketing layout,
+    // which 11-legal-pages renders. A demo component is only safe to remove
+    // once nothing references it.
+    const referrers = await referrersOf(f, p, srcFiles);
+
+    if (referrers.length) {
+      kept.push({ file: f, referrers });
+      log(`  KEPT src/components/${f} — still imported by ${referrers.join(', ')}`);
+      continue;
     }
+    await fs.unlink(p);
+    deleted.push(f);
+    log(`  deleted src/components/${f}`);
   }
+  return { deleted, kept };
 }
 
 async function patchRootTsx() {
   const before = await fs.readFile(ROOT_TSX, 'utf-8');
   await fs.writeFile(path.join(STATE_SUB, '__root.tsx.before.txt'), before);
-  await fs.writeFile(ROOT_TSX, NEW_ROOT_TSX(readProject().brandName));
+  const appShellSrc = await fs.readFile(path.join(SHELL_DEST, 'AppShell.tsx'), 'utf-8');
+  const wrapper = shellWrapperFor(appShellSrc);
+  log(`  wrapper passes ${wrapper.passed || 0} callback prop(s) declared by the export`);
+  await fs.writeFile(ROOT_TSX, NEW_ROOT_TSX(readProject().brandName, wrapper.body, wrapper.needsNavigate));
   log('  rewrote src/routes/__root.tsx');
+}
+
+// Collect top-level @import / @plugin at-rules, in source order.
+//
+// This uses postcss rather than a hand-written scanner. Three scanner
+// generations were each wrong in a different way: `[^;]+;` truncated the
+// webfont sheet at a semicolon inside its own quoted URL; a quote-aware
+// version mishandled escaped quotes and comments containing semicolons; and a
+// full hand-rolled scanner activated @import text inside an outer block
+// comment, dropped imports preceded by a same-line comment, and truncated
+// block-form @plugin at its first declaration semicolon.
+//
+// postcss is a real CSS parser and already present (Tailwind depends on it),
+// so it resolves from PROJECT_ROOT. If it cannot be loaded we HALT — silently
+// falling back to a regex is how styles.css got corrupted before, and this
+// function's output is written over the file.
+let _postcss = null;
+function postcssModule() {
+  if (_postcss) return _postcss;
+  const req = createRequire(path.join(PROJECT_ROOT, 'noop.js'));
+  try { _postcss = req('postcss'); }
+  catch (e) {
+    die('Could not load "postcss" from the project — it is required to rewrite src/styles.css safely. ' +
+        'Original error: ' + e.message);
+  }
+  return _postcss;
+}
+
+function collectAtDirectives(css) {
+  const postcss = postcssModule();
+  let root;
+  try { root = postcss.parse(css); }
+  catch (e) { die('src/styles.css is not parseable CSS (' + e.message + '); refusing to rewrite it.'); }
+
+  const out = [];
+  root.each((node) => {
+    // Top level only, and only the two at-rules this pipeline owns. A
+    // block-form at-rule (one with { }) is NOT a directive — emitting it as
+    // `@plugin foo;` would silently drop its body.
+    if (node.type !== 'atrule') return;
+    if (node.name !== 'import' && node.name !== 'plugin') return;
+    if (node.nodes) return;
+    out.push(`@${node.name} ${node.params};`);
+  });
+  return out;
 }
 
 async function rewriteStylesCss() {
@@ -170,7 +437,7 @@ async function rewriteStylesCss() {
   // order, rather than asserting a list. Whatever 01 scaffolded and 02 wrote
   // (the webfont sheet, "tailwindcss", the typography plugin) is preserved
   // exactly; this skill does not decide which plugins a project has.
-  const directives = [...before.matchAll(/^\s*@(?:import|plugin)\s+[^;]+;/gm)].map((m) => m[0].trim());
+  const directives = collectAtDirectives(before);
   if (!directives.some((d) => /@import\s+"tailwindcss"/.test(d))) {
     die('No `@import "tailwindcss";` in src/styles.css — the scaffold is not in the expected state; run skill 01 first.');
   }
@@ -198,14 +465,22 @@ async function main() {
   try { shellFiles = shellComponentFiles(); } catch (e) { die(e.message); }
   log(`▶ Export ships ${shellFiles.length} shell components: ${shellFiles.join(', ')}`);
 
-  log('▶ Ensuring @radix-ui/react-dropdown-menu installed...');
-  await ensureRadixDep();
+  log('▶ Copying the export design kit the shell components depend on...');
+  const kitFiles = await copyDesignKit();
 
   log('▶ Copying shell components...');
-  await copyShellComponents(shellFiles);
+  const kitImportsRewritten = await copyShellComponents(shellFiles);
+
+  // Must run AFTER the copy — the dependency list is derived from what the
+  // copied files actually import, not from a list held by this skill.
+  log('▶ Installing the packages the export imports...');
+  const installedDeps = await ensureExportDeps([
+    ...shellFiles.map((f) => path.join(SHELL_DEST, f)),
+    ...kitFiles.map((f) => path.join(KIT_DEST, f)),
+  ]);
 
   log('▶ Deleting scaffold demo components...');
-  await deleteScaffoldDemos();
+  const demoResult = await deleteScaffoldDemos();
 
   log('▶ Patching src/routes/__root.tsx...');
   await patchRootTsx();
@@ -216,7 +491,12 @@ async function main() {
   const summary = {
     shellComponentsFrom: SHELL_SRC,
     shellComponents: shellFiles.map((f) => path.join(SHELL_DEST, f)),
-    deletedScaffoldDemos: SCAFFOLD_DEMOS.map((f) => path.join(PROJECT_ROOT, 'src', 'components', f)),
+    designKitFrom: KIT_SRC,
+    designKit: kitFiles.map((f) => path.join(KIT_DEST, f)),
+    kitImportsRewritten,
+    installedDeps,
+    deletedScaffoldDemos: demoResult.deleted,
+    keptScaffoldDemos: demoResult.kept,
     rootTsxRewritten: ROOT_TSX,
     stylesCssRewritten: STYLES_PATH,
     // Recorded so the receipt shows the typography came from skill 02, not here.
@@ -233,4 +513,12 @@ async function main() {
   console.log(JSON.stringify(summary, null, 2));
 }
 
-main().catch((e) => { console.error(e.stack || e.message); process.exit(1); });
+// Entry-point guard (authoring-checklist rule 15). Without it a bare
+// `import()` of this module — by a test, a tool, or anything introspecting the
+// skill — silently re-runs the whole scaffold merge. 01-project-init already
+// carries this guard; 03 did not, and importing it to check that it parsed
+// executed a full setup as a side effect.
+import { pathToFileURL } from 'node:url';
+if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
+  main().catch((e) => { console.error(e.stack || e.message); process.exit(1); });
+}

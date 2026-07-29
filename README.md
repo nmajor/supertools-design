@@ -34,7 +34,8 @@ Three tracks live in `.skills/`.
 ### Bootstrap (`00`–`17`) — runs in dependency order
 
 ```
-00 prereqs ─┬─ 01 init ─ 02 design-tokens ─ 03 shell ─ 04 logo
+00 prereqs ─┬─ 01 init ─┬─ 02 design-tokens ─ 03 shell ─ 04 logo
+            │           └─ (01b r2-storage — OPTIONAL, only if the product stores objects)
             │              ├─ 09 forms · 10 analytics · 11 legal · 13 uptime
             ├─ 05 domain-dns ─┬─ 06 email-transactional
             │                 ├─ 07 email-mailboxes ─ 08 support-chat ─ 09 forms
@@ -46,6 +47,7 @@ Three tracks live in `.skills/`.
 |----|----------|
 | `00-prereqs` | Design OS export gate + credential / CLI / domain gate for every later skill; writes `project.json` |
 | `01-project-init` | app scaffold from supertools-stack, git repo |
+| `01b-r2-storage` | **optional** — R2 bucket + preview bucket, bound in `wrangler.jsonc`, proven by a real object round-trip |
 | `02-design-tokens` | the export's palette + fonts + CSS custom properties into Tailwind 4 |
 | `03-shell` | the shell components the export ships, wired to the router |
 | `04-logo` | SVG wordmark + favicon / apple-touch / OG set, in the export's brand |

@@ -48,9 +48,30 @@ say it, it is not written. It is also the only skill that owns typography;
    (inline styles, sample components) can read `--color-primary-*`,
    `--font-heading`, etc. The markers make re-runs idempotent.
 
-The scaffold's `lagoon`/`sea`/`island-shell` demo CSS is **left in place**
-— it's still referenced by the scaffold's Header/Footer/ThemeToggle. Skill
-`03-shell` removes those components and the supporting CSS together.
+### What this skill deliberately leaves behind — and why that matters
+
+This skill does **not** clean `src/styles.css`. After it runs, the file still
+carries the scaffold's own brand: a set of `--sea-*` / `--lagoon*` /
+`--island-shell*` CSS custom properties, and a live `font-family: "Fraunces",
+Georgia, serif` declaration. **Between skill 02 and skill 03 the app therefore
+renders a mixture of this project's palette and the scaffold's.** That is a
+real, if temporary, state — not a cosmetic leftover.
+
+`03-shell` is what resolves it: it rewrites `src/styles.css` to a clean
+minimum, carrying across only the `@theme` map and token block this skill
+wrote. **Do not finalize 03 without confirming those scaffold values are
+actually gone** — that check is the whole point of the boundary between the
+two skills.
+
+These are supertools-stack's own scaffold values rather than a third party's
+brand, so rule 23 does not forbid naming them here; but leaving them in a
+shipped project would still render the wrong brand, which is why 03 must run.
+
+An earlier version of this file called them "classes" referenced by
+"Header/Footer/ThemeToggle". Both were wrong: they are **custom properties**,
+not classes, and no component references them — `src/components/` ships
+`Footer`, `MarketingNav`, `UserMenu`, `ErrorPage`, `SeoHead` and `Turnstile`,
+with no `Header.tsx` or `ThemeToggle.tsx`. Read the tree, not this list.
 
 ## Steps
 

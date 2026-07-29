@@ -1,0 +1,10 @@
+{
+  "name": "01b-r2-storage",
+  "_comment_optional": "OPTIONAL. Not part of the mandatory 00-17 chain. Run it only when the product stores objects (uploads, media, generated artifacts, exports). A project that stores nothing should skip it entirely rather than create an unused bucket.",
+  "optional": true,
+  "requires": ["01-project-init"],
+  "envRequired": ["CLOUDFLARE_ACCOUNT_ID", "CLOUDFLARE_API_TOKEN"],
+  "envOptional": ["R2_BUCKET_NAME", "R2_BINDING", "R2_LOCATION", "R2_SKIP"],
+  "cliRequired": ["node"],
+  "provides": ["r2-bucket"]
+}
