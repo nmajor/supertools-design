@@ -8,9 +8,10 @@ import { spawnSync } from 'node:child_process';
 import { createRequire } from 'node:module';
 import { loadEnv, PROJECT_ROOT } from '../_shared/env.mjs';
 import { readProject } from '../_shared/project.mjs';
-import { requireExport, EXPORT_DIR, SHELL_DIR, shellComponentFiles } from '../_shared/design-os.mjs';
+import { requireExport, EXPORT_DIR, SHELL_DIR, shellComponentFiles, readTokensCss } from '../_shared/design-os.mjs';
 
 const STATE_SUB    = path.join(PROJECT_ROOT, '.supertools-state', '03-shell');
+const QUARANTINE   = path.join(STATE_SUB, 'removed');
 const SHELL_SRC    = SHELL_DIR;
 const SHELL_DEST   = path.join(PROJECT_ROOT, 'src', 'components', 'shell');
 const ROOT_TSX     = path.join(PROJECT_ROOT, 'src', 'routes', '__root.tsx');
@@ -150,12 +151,30 @@ const die = (m) => { console.error(m); process.exit(1); };
 
 function escapeRegex(s) { return s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'); }
 
+// A child-process environment with the project's own secrets removed. Anything
+// loaded out of .env is stripped; only the ambient variables a package manager
+// legitimately needs are kept.
+function scrubbedEnv() {
+  const KEEP = new Set([
+    'PATH', 'HOME', 'SHELL', 'LANG', 'LC_ALL', 'TMPDIR', 'TEMP', 'TMP',
+    'USER', 'LOGNAME', 'TERM', 'NODE_ENV', 'npm_config_registry',
+    'NPM_CONFIG_REGISTRY', 'NODE_EXTRA_CA_CERTS', 'SSL_CERT_FILE',
+    'HTTP_PROXY', 'HTTPS_PROXY', 'NO_PROXY', 'http_proxy', 'https_proxy', 'no_proxy',
+  ]);
+  const out = {};
+  for (const [k, v] of Object.entries(process.env)) {
+    if (KEEP.has(k) || k.startsWith('npm_config_')) out[k] = v;
+  }
+  return out;
+}
+
 function run(cmd, args, opts = {}) {
   log(`$ ${cmd} ${args.join(' ')}`);
   const r = spawnSync(cmd, args, {
     cwd: opts.cwd || PROJECT_ROOT,
     stdio: opts.stdio || ['ignore', 'inherit', 'inherit'],
     encoding: 'utf-8',
+    ...(opts.env ? { env: opts.env } : {}),
   });
   if (r.status !== 0) throw new Error(`${cmd} ${args.join(' ')} exited ${r.status}`);
   return r;
@@ -212,7 +231,25 @@ async function moduleSpecifiersOf(source, fileName) {
     }
     ts.forEachChild(node, visit);
   };
-  visit(sf);
+  // Vite's import.meta.glob() takes path patterns that preProcessFile does not
+  // report, and TypeScript does not check whether a glob matches anything — so
+  // a file referenced only this way looked unreferenced AND the typecheck
+  // stayed green after deleting it. Collect its string arguments too.
+  const visitGlob = (node) => {
+    if (ts.isCallExpression(node) &&
+        ts.isPropertyAccessExpression(node.expression) &&
+        ts.isMetaProperty(node.expression.expression) &&
+        node.expression.name.text.startsWith('glob')) {
+      for (const arg of node.arguments) {
+        if (ts.isStringLiteralLike(arg)) specs.add(arg.text);
+        else if (ts.isArrayLiteralExpression(arg)) {
+          for (const el of arg.elements) if (ts.isStringLiteralLike(el)) specs.add(el.text);
+        }
+      }
+    }
+    ts.forEachChild(node, visitGlob);
+  };
+  visitGlob(sf);
   return [...specs];
 }
 
@@ -246,7 +283,18 @@ async function ensureExportDeps(files) {
     return [];
   }
   log(`  export needs ${missing.length} package(s) not in package.json: ${missing.join(', ')}`);
-  run('npm', ['install', '--no-fund', '--no-audit', ...missing]);
+  // SECURITY: the package names come from the EXPORT, i.e. from data, and this
+  // process has every .env value loaded into process.env (Cloudflare, email,
+  // support and payment credentials). Installing with lifecycle scripts enabled
+  // would hand a postinstall in any of those packages a live credential set.
+  //
+  //   --ignore-scripts  : no install-time code execution at all
+  //   scrubbedEnv()     : and even so, the child never sees project secrets
+  //
+  // Both, not either: --ignore-scripts is the control, the scrubbed env is the
+  // blast radius if it is ever bypassed or removed.
+  run('npm', ['install', '--no-fund', '--no-audit', '--ignore-scripts', ...missing],
+      { env: scrubbedEnv() });
   return missing;
 }
 
@@ -379,7 +427,11 @@ async function referrersOf(fileName, ownPath, files) {
       const bare = spec.replace(/\?.*$/, '');            // drop ?query
       const candidates = bare.startsWith('.')
         ? [path.resolve(path.dirname(sf), bare)]
-        : await aliasTargets(bare);
+        // A leading "/" in a Vite glob is project-root-relative, not filesystem
+        // absolute. Try both that and any tsconfig alias.
+        : bare.startsWith('/')
+          ? [path.join(PROJECT_ROOT, bare), bare]
+          : await aliasTargets(bare);
       if (!candidates.length) continue;
       const abs = candidates[0];
       const matched = candidates.some((c) => {
@@ -418,9 +470,14 @@ async function deleteScaffoldDemos() {
       log(`  KEPT src/components/${f} — still imported by ${referrers.join(', ')}`);
       continue;
     }
-    // Keep the bytes so an incorrect deletion can be undone.
-    removedBackups.set(f, await fs.readFile(p, 'utf-8'));
-    await fs.unlink(p);
+    // Quarantine by RENAME rather than read-then-unlink. A rename preserves the
+    // inode, so a symlink stays a symlink and mode, timestamps, xattrs and
+    // non-UTF-8 bytes all survive a rollback. Reading to a string and writing
+    // it back would have silently converted a symlink into a regular file.
+    await fs.mkdir(QUARANTINE, { recursive: true });
+    const parked = path.join(QUARANTINE, f);
+    await fs.rename(p, parked);
+    removedBackups.set(f, parked);
     deleted.push(f);
     log(`  deleted src/components/${f}`);
   }
@@ -433,13 +490,15 @@ async function deleteScaffoldDemos() {
     log('  typechecking to confirm nothing referenced the deleted files...');
     const tsc = spawnSync('npx', ['tsc', '--noEmit'], { cwd: PROJECT_ROOT, encoding: 'utf-8' });
     if (tsc.status !== 0) {
-      for (const [f, body] of removedBackups) {
-        await fs.writeFile(path.join(PROJECT_ROOT, 'src', 'components', f), body);
+      for (const [f, parked] of removedBackups) {
+        await fs.rename(parked, path.join(PROJECT_ROOT, 'src', 'components', f));
         log(`  RESTORED src/components/${f} — the typecheck failed without it`);
       }
       const restored = [...removedBackups.keys()];
       return { deleted: [], kept: [...kept, ...restored.map((f) => ({ file: f, referrers: ['restored: typecheck failed without it'] }))] };
     }
+    // Only now is the quarantine safe to drop.
+    for (const parked of removedBackups.values()) await fs.rm(parked, { force: true });
     log('  typecheck clean — deletions confirmed');
   }
   return { deleted, kept };
@@ -576,6 +635,24 @@ async function rewriteStylesCss() {
     if (!/@theme\s*\{/.test(next) || !next.includes(BEGIN_MARKER) || !next.includes(END_MARKER)) {
       die('The rewritten src/styles.css lost the @theme block or the skill 02 token markers. ' +
           'Refusing to write; the original file is untouched.');
+    }
+    // Marker presence is not enough. If the token block itself contains the
+    // end-marker TEXT (a comment carried in from the export's tokens.css), the
+    // slice ends early, and the result still parses and still has both markers
+    // while silently dropping every token after the embedded marker. So check
+    // the thing that actually matters: every custom property the EXPORT
+    // declares must be present in the output.
+    try {
+      const declared = [...readTokensCss().matchAll(/(--[A-Za-z0-9_-]+)\s*:/g)].map((m) => m[1]);
+      const lost = [...new Set(declared)].filter((name) => !next.includes(name));
+      if (lost.length) {
+        die('The rewritten src/styles.css would drop ' + lost.length +
+            ' token(s) the export declares: ' + lost.join(', ') +
+            '. This usually means the token block contains the end-marker text. ' +
+            'Refusing to write; the original file is untouched.');
+      }
+    } catch (e) {
+      die('Could not read the export tokens to confirm none were dropped: ' + e.message);
     }
   }
   await fs.writeFile(STYLES_PATH, next);

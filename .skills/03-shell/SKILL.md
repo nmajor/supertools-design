@@ -42,13 +42,23 @@ out of the file 02 wrote instead of declaring its own copy.
    from the files, not held here — an earlier version installed one hardcoded
    Radix package, and any export importing anything else failed to build.
    Already-satisfied imports are reported and skipped.
-4. **Retires scaffold demo chrome, but only when nothing references it.**
-   `SCAFFOLD_DEMOS` names candidates; each is deleted only if no file in the
-   project references it. References are found by parsing every source file
-   with TypeScript and **resolving** each specifier against the real path on
-   disk — including `tsconfig` path aliases such as `@/components/Footer`,
-   which a relative-only check treated as invisible and would have deleted
-   underneath. A referenced candidate is kept and its referrers logged.
+4. **Retires scaffold demo chrome, but only when nothing detectable references
+   it.** `SCAFFOLD_DEMOS` names candidates. References are found by parsing
+   every source file with TypeScript — static imports, `export … from`,
+   dynamic `import()`, `require()`, `require.resolve` (dot and bracket form)
+   and Vite `import.meta.glob` patterns — and **resolving** each specifier
+   against the real path on disk, including `tsconfig` path aliases and any
+   `extends` chain. A referenced candidate is kept and its referrers logged.
+
+   **"Detectable" is doing real work in that sentence.** Reference discovery in
+   a dynamic language cannot be complete: a path assembled at runtime, or read
+   from config, is invisible to any static scan. So deletion is backstopped —
+   candidates are quarantined by rename, `tsc --noEmit` runs, and anything the
+   typecheck misses is restored. Files are only really removed once the
+   compiler agrees. Even that is not total: a reference that neither the parser
+   nor the typechecker sees (an untyped glob that silently becomes empty) can
+   still slip through, which is why the quarantine exists and why this list of
+   detected forms is stated explicitly rather than as "nothing references it".
 5. **Rewrites `src/routes/__root.tsx`** to wrap `{children}` in `<AppShell>`.
    The wrapper passes **only callbacks the export's own `AppShellProps`
    declares** — `onNavigate`/`onSignIn`/`onNavigateStage`/`onSelectShort` are
