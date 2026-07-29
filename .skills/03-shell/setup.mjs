@@ -189,13 +189,25 @@ async function moduleSpecifiersOf(source, fileName) {
   const pre = ts.preProcessFile(source, /*readImportFiles*/ true, /*detectJavaScriptImports*/ true);
   const specs = new Set((pre.importedFiles || []).map((f) => f.fileName));
 
-  // preProcessFile does not report `require.resolve('x')` — it is a path
-  // lookup rather than an import, but it is still a real reference to the
-  // module, and deleting the file it names would break the caller. Add it as a
-  // narrow, named supplement rather than reintroducing a general regex scan.
-  for (const m of source.matchAll(/\brequire\s*\.\s*resolve\s*\(\s*['"`]([^'"`]+)['"`]/g)) {
-    specs.add(m[1]);
-  }
+  // preProcessFile does not report `require.resolve('x')` — it is a path lookup
+  // rather than an import, but it is still a real reference, and deleting the
+  // file it names breaks the caller. A regex supplement was wrong too: it
+  // required the string literal immediately after "(", so
+  // `require.resolve(/* keep */ './x')` slipped through. Walk the AST instead.
+  const sf = ts.createSourceFile(fileName || 'f.tsx', source, ts.ScriptTarget.Latest, true);
+  const visit = (node) => {
+    if (ts.isCallExpression(node) &&
+        ts.isPropertyAccessExpression(node.expression) &&
+        ts.isIdentifier(node.expression.expression) &&
+        node.expression.expression.text === 'require' &&
+        node.expression.name.text === 'resolve' &&
+        node.arguments.length &&
+        ts.isStringLiteralLike(node.arguments[0])) {
+      specs.add(node.arguments[0].text);
+    }
+    ts.forEachChild(node, visit);
+  };
+  visit(sf);
   return [...specs];
 }
 
@@ -306,6 +318,39 @@ async function sourceFilesUnder(dir, acc = []) {
 // require.resolve(). Specifiers now come from TypeScript's preProcessFile, so
 // every import form the language supports is covered, and each one is resolved
 // against the real path on disk rather than string-matched.
+// Resolve a non-relative specifier through tsconfig `compilerOptions.paths`.
+// Parsed with TypeScript's own config reader so JSONC comments are handled by
+// the same tool that will interpret them at build time.
+let _aliasMap = null;
+async function aliasMap() {
+  if (_aliasMap) return _aliasMap;
+  const ts = await typescriptModule();
+  const cfgPath = path.join(PROJECT_ROOT, 'tsconfig.json');
+  const read = ts.readConfigFile(cfgPath, ts.sys.readFile);
+  const opts = read.config?.compilerOptions || {};
+  const baseUrl = path.resolve(PROJECT_ROOT, opts.baseUrl || '.');
+  _aliasMap = { baseUrl, paths: opts.paths || {} };
+  return _aliasMap;
+}
+
+async function aliasTargets(spec) {
+  const { baseUrl, paths } = await aliasMap();
+  const out = [];
+  for (const [pattern, targets] of Object.entries(paths)) {
+    const star = pattern.indexOf('*');
+    if (star < 0) {
+      if (pattern === spec) for (const t of targets) out.push(path.resolve(baseUrl, t));
+      continue;
+    }
+    const prefix = pattern.slice(0, star);
+    const suffix = pattern.slice(star + 1);
+    if (!spec.startsWith(prefix) || !spec.endsWith(suffix)) continue;
+    const middle = spec.slice(prefix.length, spec.length - suffix.length);
+    for (const t of targets) out.push(path.resolve(baseUrl, t.replace('*', middle)));
+  }
+  return out;
+}
+
 async function referrersOf(fileName, ownPath, files) {
   const ownResolved = path.resolve(ownPath);
   const ownNoExt = ownResolved.replace(/\.(tsx?|jsx?)$/, '');
@@ -317,11 +362,21 @@ async function referrersOf(fileName, ownPath, files) {
     try { specs = await moduleSpecifiersOf(text, sf); }
     catch { specs = []; }
     for (const spec of specs) {
-      if (!spec.startsWith('.')) continue;               // only relative can reach it
+      // Relative specifiers resolve against the importing file; ALIASED ones
+      // (`@/components/Footer`) resolve through tsconfig paths. Discarding
+      // non-relative specifiers meant a valid alias import was invisible and
+      // the file it referenced could be unlinked underneath it.
       const bare = spec.replace(/\?.*$/, '');            // drop ?query
-      const abs = path.resolve(path.dirname(sf), bare);
-      const absNoExt = abs.replace(/\.(tsx?|jsx?)$/, '');
-      if (absNoExt === ownNoExt || abs === ownResolved) {
+      const candidates = bare.startsWith('.')
+        ? [path.resolve(path.dirname(sf), bare)]
+        : await aliasTargets(bare);
+      if (!candidates.length) continue;
+      const abs = candidates[0];
+      const matched = candidates.some((c) => {
+        const cNoExt = c.replace(/\.(tsx?|jsx?)$/, '');
+        return cNoExt === ownNoExt || c === ownResolved;
+      });
+      if (matched) {
         hits.push(path.relative(PROJECT_ROOT, sf));
         break;
       }
@@ -428,7 +483,21 @@ async function rewriteStylesCss() {
   // Carry skill 02's typography across verbatim. A missing @theme block means
   // 02 did not run (or was undone) — halt rather than substitute a default,
   // which is how this file used to end up with another project's fonts.
-  const themeMatch = before.match(/@theme\s*\{[\s\S]*?\}/);
+  // Extract @theme with postcss, not a regex. `/@theme\s*\{[\s\S]*?\}/` is
+  // non-greedy, so a declaration whose VALUE contains a brace — e.g.
+  // `--font-test: "a}b";` — truncated the block at the brace inside the string
+  // and wrote an unclosed string into styles.css. postcss parses the original
+  // fine; only the generated output was broken.
+  const themeBlock = (() => {
+    const postcss = postcssModule();
+    let root;
+    try { root = postcss.parse(before); }
+    catch (e) { die('src/styles.css is not parseable CSS (' + e.message + '); refusing to rewrite it.'); }
+    let found = null;
+    root.each((n) => { if (n.type === 'atrule' && n.name === 'theme' && n.nodes) found = n; });
+    return found ? found.toString() : null;
+  })();
+  const themeMatch = themeBlock ? [themeBlock] : null;
   if (!themeMatch) {
     die('No @theme block in src/styles.css — skill 02-design-tokens owns typography; run it first.');
   }

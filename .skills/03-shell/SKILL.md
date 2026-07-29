@@ -44,9 +44,11 @@ out of the file 02 wrote instead of declaring its own copy.
    Already-satisfied imports are reported and skipped.
 4. **Retires scaffold demo chrome, but only when nothing references it.**
    `SCAFFOLD_DEMOS` names candidates; each is deleted only if no file in the
-   project imports it (searching `import`/`export ... from`, bare imports,
-   dynamic `import()`, `require()`, and specifiers with extensions or
-   `?query`). A referenced candidate is kept and its referrers logged.
+   project references it. References are found by parsing every source file
+   with TypeScript and **resolving** each specifier against the real path on
+   disk — including `tsconfig` path aliases such as `@/components/Footer`,
+   which a relative-only check treated as invisible and would have deleted
+   underneath. A referenced candidate is kept and its referrers logged.
 5. **Rewrites `src/routes/__root.tsx`** to wrap `{children}` in `<AppShell>`.
    The wrapper passes **only callbacks the export's own `AppShellProps`
    declares** — `onNavigate`/`onSignIn`/`onNavigateStage`/`onSelectShort` are
@@ -62,10 +64,16 @@ out of the file 02 wrote instead of declaring its own copy.
    rather than substituting a default. **No reset is emitted** — the previous
    box-sizing/body/font-smoothing reset was a design opinion and is gone.
 
-   Directives are found with a scanner, not a regex: the terminating `;` has to
-   be located outside strings, comments and parentheses. A plain `[^;]+;` cut
-   the webfont sheet at the first semicolon inside its own quoted URL and the
-   build died with `CssSyntaxError: Unterminated string`.
+   `@import`/`@plugin` directives AND skill 02's `@theme` block are extracted
+   with **postcss**, not by hand. Three scanner generations each failed
+   differently — a plain `[^;]+;` cut the webfont sheet at the first semicolon
+   inside its own quoted URL; a quote-aware version mishandled escaped quotes
+   and comments containing semicolons; a full hand-rolled scanner activated
+   `@import` text inside a block comment and truncated block-form `@plugin`.
+   The `@theme` regex had the same class of bug: it truncated at a `}` inside
+   a declaration value such as `--font-test: "a}b";`. postcss is already
+   present (Tailwind depends on it); if it cannot be loaded the skill HALTS
+   rather than degrading to a regex.
 
 ## Steps
 
@@ -95,11 +103,13 @@ out of the file 02 wrote instead of declaring its own copy.
   the brand in `<title>`, so searching the full HTML passed whether or not the
   shell rendered at all.
 
-> **Known gap.** The verifier still asserts `@radix-ui/react-dropdown-menu` is
-> in `dependencies`. That is a leftover from the hardcoded-install era: setup
-> now installs what the export imports, so an export that never imports Radix
-> will fail this check even though nothing is wrong. Fix by asserting instead
-> that every external import of the copied files resolves.
+- **Every external package the copied files import is declared** in
+  `package.json`. This replaced a hard requirement for one named Radix
+  package, which was wrong twice over: setup installs what the export imports,
+  so a project importing no Radix would fail for nothing — and here it PASSED
+  only because a stale `package.json` entry survived from the old
+  hardcoded-install behaviour while the export imports no Radix at all. A check
+  that passes on a stale artifact is worse than no check.
 
 ## Output
 
