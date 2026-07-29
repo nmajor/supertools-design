@@ -242,7 +242,14 @@ const VISION_CRITERIA = {
     'The composition reads as a deliberate mark, not as elements scattered or stacked by accident.',
   ],
   'wordmark': [
-    'The mark fits entirely inside its rounded backplate — nothing sticks out left, right, top, or bottom.',
+    // Brand-neutral: check for composition BUGS, not for a particular
+    // composition. This used to read "the mark fits entirely inside its
+    // rounded backplate", which presupposed the fallback design's backplate —
+    // so a project whose brand deliberately uses a bare glyph was told its
+    // "plate layer dropped out". Whether a mark sits on a plate is the
+    // project's call (authoring-checklist rule 23); whether something bleeds
+    // out of a container it DOES have is a real defect.
+    'If the mark sits on a backplate or inside any container, it fits entirely within it — nothing bleeds out left, right, top, or bottom. A mark with no container is a legitimate design choice, not a failure.',
     `The text "${BRAND_NAME}" is fully visible: not clipped at the right edge of the canvas, and not overlapping the mark.`,
     'The mark and the text appear vertically aligned (their centerlines roughly match).',
   ],
@@ -654,11 +661,94 @@ function AppShellWrapper({ children }: { children: React.ReactNode }) {
 }
 `;
 
+// Insert ONLY the meta/link entries this skill owns, leaving the rest of
+// __root.tsx alone.
+//
+// This used to write NEW_ROOT_TSX over the whole file. That template carries
+// its own AppShellWrapper with hardcoded `user={null} navigationItems={[]}
+// onNavigate={...}` props — the shell the skill was written against — so it
+// silently reverted 03-shell's prop-aware wrapper and broke `tsc` with TS2322
+// and TS7006. A skill that says it "added icon links + OG meta" must not
+// rewrite an unrelated component while it is in there.
+function upsertEntries(block, entries, matchKey) {
+  // block: the raw text between [ and ] of a meta:/links: array.
+  let out = block.replace(/\s*$/, '');
+  let added = 0;
+  for (const { match, text } of entries) {
+    if (match.test(out)) continue;
+    const indent = (out.match(/\n(\s+)\S/) || [null, '      '])[1];
+    if (out.trim() && !/,\s*$/.test(out)) out += ',';
+    out += `\n${indent}${text},`;
+    added++;
+  }
+  return { text: out + '\n    ', added };
+}
+
+function spliceArray(src, key, entries) {
+  // Find `key: [` inside the head() object and return [start,end) of its body.
+  const keyIdx = src.indexOf(`${key}: [`);
+  if (keyIdx < 0) return { src, added: 0 };
+  const open = src.indexOf('[', keyIdx);
+  let i = open + 1, depth = 1, inStr = null;
+  while (i < src.length && depth > 0) {
+    const c = src[i];
+    if (inStr) {
+      if (c === '\\') { i += 2; continue; }
+      if (c === inStr) inStr = null;
+    } else if (c === '"' || c === "'" || c === '`') inStr = c;
+    else if (c === '[') depth++;
+    else if (c === ']') depth--;
+    i++;
+  }
+  if (depth !== 0) return { src, added: 0 };
+  const close = i - 1;
+  const body = src.slice(open + 1, close);
+  const { text, added } = upsertEntries(body, entries);
+  return { src: src.slice(0, open + 1) + text + src.slice(close), added };
+}
+
 async function patchRootTsx(description) {
   const before = await fs.readFile(ROOT_TSX, 'utf-8');
   await fs.writeFile(path.join(STATE_SUB, '__root.tsx.before.txt'), before);
-  await fs.writeFile(ROOT_TSX, NEW_ROOT_TSX(description));
-  log('  rewrote src/routes/__root.tsx (added icon links + OG meta)');
+
+  const metaEntries = [
+    { match: /property:\s*'og:title'/,        text: `{ property: 'og:title', content: ${JSON.stringify(BRAND_NAME)} }` },
+    { match: /property:\s*'og:image'[^:]/,     text: "{ property: 'og:image', content: '/og-image.png' }" },
+    { match: /property:\s*'og:image:width'/,   text: "{ property: 'og:image:width', content: '1200' }" },
+    { match: /property:\s*'og:image:height'/,  text: "{ property: 'og:image:height', content: '630' }" },
+    { match: /property:\s*'og:type'/,          text: "{ property: 'og:type', content: 'website' }" },
+    { match: /name:\s*'twitter:card'/,         text: "{ name: 'twitter:card', content: 'summary_large_image' }" },
+  ];
+  // Only claim a description when the project actually supplied one.
+  if (description) {
+    metaEntries.unshift(
+      { match: /name:\s*'description'/,        text: `{ name: 'description', content: ${JSON.stringify(description)} }` },
+      { match: /property:\s*'og:description'/, text: `{ property: 'og:description', content: ${JSON.stringify(description)} }` },
+    );
+  }
+  const linkEntries = [
+    { match: /rel:\s*'icon'/,             text: "{ rel: 'icon', href: '/favicon.svg', type: 'image/svg+xml' }" },
+    { match: /rel:\s*'alternate icon'/,   text: "{ rel: 'alternate icon', href: '/favicon.ico' }" },
+    { match: /rel:\s*'apple-touch-icon'/, text: "{ rel: 'apple-touch-icon', href: '/apple-touch-icon.png' }" },
+  ];
+
+  let next = before;
+  const m = spliceArray(next, 'meta', metaEntries); next = m.src;
+  const l = spliceArray(next, 'links', linkEntries); next = l.src;
+
+  if (m.added === 0 && l.added === 0) {
+    log('  src/routes/__root.tsx already carries the icon links + OG meta');
+    return;
+  }
+  // Guard: only the head arrays may have changed. If anything else moved, the
+  // splice went wrong — halt with the original intact.
+  const stripHead = (t) => t.replace(/head:\s*\(\)\s*=>\s*\(\{[\s\S]*?\}\),/, 'HEAD');
+  if (stripHead(before) !== stripHead(next)) {
+    die('The __root.tsx splice changed something outside head(); refusing to write. ' +
+        'Original preserved at ' + path.join(STATE_SUB, '__root.tsx.before.txt'));
+  }
+  await fs.writeFile(ROOT_TSX, next);
+  log(`  patched src/routes/__root.tsx (+${m.added} meta, +${l.added} link entries; the rest untouched)`);
 }
 
 async function main() {
