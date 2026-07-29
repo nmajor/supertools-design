@@ -197,10 +197,15 @@ async function moduleSpecifiersOf(source, fileName) {
   const sf = ts.createSourceFile(fileName || 'f.tsx', source, ts.ScriptTarget.Latest, true);
   const visit = (node) => {
     if (ts.isCallExpression(node) &&
-        ts.isPropertyAccessExpression(node.expression) &&
+        // Both `require.resolve(x)` and `require["resolve"](x)` are valid.
+        (ts.isPropertyAccessExpression(node.expression) ||
+         ts.isElementAccessExpression(node.expression)) &&
         ts.isIdentifier(node.expression.expression) &&
         node.expression.expression.text === 'require' &&
-        node.expression.name.text === 'resolve' &&
+        (ts.isPropertyAccessExpression(node.expression)
+          ? node.expression.name.text === 'resolve'
+          : ts.isStringLiteralLike(node.expression.argumentExpression) &&
+            node.expression.argumentExpression.text === 'resolve') &&
         node.arguments.length &&
         ts.isStringLiteralLike(node.arguments[0])) {
       specs.add(node.arguments[0].text);
@@ -326,9 +331,14 @@ async function aliasMap() {
   if (_aliasMap) return _aliasMap;
   const ts = await typescriptModule();
   const cfgPath = path.join(PROJECT_ROOT, 'tsconfig.json');
+  // parseJsonConfigFileContent follows `extends`, so aliases declared in a base
+  // tsconfig are visible. readConfigFile alone does not, and a base-config alias
+  // being invisible means a referenced file can be deleted.
   const read = ts.readConfigFile(cfgPath, ts.sys.readFile);
-  const opts = read.config?.compilerOptions || {};
-  const baseUrl = path.resolve(PROJECT_ROOT, opts.baseUrl || '.');
+  const parsed = ts.parseJsonConfigFileContent(
+    read.config || {}, ts.sys, PROJECT_ROOT, undefined, cfgPath);
+  const opts = parsed.options || {};
+  const baseUrl = opts.baseUrl ? path.resolve(opts.baseUrl) : PROJECT_ROOT;
   _aliasMap = { baseUrl, paths: opts.paths || {} };
   return _aliasMap;
 }
@@ -388,6 +398,7 @@ async function referrersOf(fileName, ownPath, files) {
 async function deleteScaffoldDemos() {
   const deleted = [];
   const kept = [];
+  const removedBackups = new Map();
   const srcFiles = await sourceFilesUnder(PROJECT_ROOT);
 
   for (const f of SCAFFOLD_DEMOS) {
@@ -407,9 +418,29 @@ async function deleteScaffoldDemos() {
       log(`  KEPT src/components/${f} — still imported by ${referrers.join(', ')}`);
       continue;
     }
+    // Keep the bytes so an incorrect deletion can be undone.
+    removedBackups.set(f, await fs.readFile(p, 'utf-8'));
     await fs.unlink(p);
     deleted.push(f);
     log(`  deleted src/components/${f}`);
+  }
+
+  // Safety net: reference detection can only ever be as good as its parser, and
+  // deletion is destructive. Let the real compiler have the last word — if
+  // removing these files broke the typecheck, something referenced them that we
+  // did not see, so put them back and say so rather than leaving a broken tree.
+  if (deleted.length) {
+    log('  typechecking to confirm nothing referenced the deleted files...');
+    const tsc = spawnSync('npx', ['tsc', '--noEmit'], { cwd: PROJECT_ROOT, encoding: 'utf-8' });
+    if (tsc.status !== 0) {
+      for (const [f, body] of removedBackups) {
+        await fs.writeFile(path.join(PROJECT_ROOT, 'src', 'components', f), body);
+        log(`  RESTORED src/components/${f} — the typecheck failed without it`);
+      }
+      const restored = [...removedBackups.keys()];
+      return { deleted: [], kept: [...kept, ...restored.map((f) => ({ file: f, referrers: ['restored: typecheck failed without it'] }))] };
+    }
+    log('  typecheck clean — deletions confirmed');
   }
   return { deleted, kept };
 }
@@ -463,8 +494,11 @@ function collectAtDirectives(css) {
     // `@plugin foo;` would silently drop its body.
     if (node.type !== 'atrule') return;
     if (node.name !== 'import' && node.name !== 'plugin') return;
-    if (node.nodes) return;
-    out.push(`@${node.name} ${node.params};`);
+    // Block-form at-rules are valid and meaningful — Tailwind v4 configures a
+    // plugin with `@plugin "x" { className: wysiwyg; }`. Skipping any node with
+    // `.nodes` silently DELETED the plugin and its configuration. Emit the
+    // node's own serialization so both forms survive verbatim.
+    out.push(node.nodes ? node.toString() : `@${node.name} ${node.params};`);
   });
   return out;
 }
@@ -473,12 +507,25 @@ async function rewriteStylesCss() {
   const before = await fs.readFile(STYLES_PATH, 'utf-8');
   await fs.writeFile(path.join(STATE_SUB, 'styles.css.before.txt'), before);
 
-  const markerRe = new RegExp(
-    `${escapeRegex(BEGIN_MARKER)}[\\s\\S]*?${escapeRegex(END_MARKER)}`
-  );
-  const m = before.match(markerRe);
-  if (!m) die('Could not find skill 02 BEGIN/END markers in src/styles.css — run skill 02 first.');
-  const tokensBlock = m[0];
+  // Extract skill 02's token block by locating its BEGIN/END COMMENT NODES
+  // with postcss, not by regex. A non-greedy match between the marker strings
+  // ended early when a declaration VALUE contained the end-marker text, e.g.
+  //   --a: "/* === supertools 02-design-tokens END === */";
+  // which wrote an unclosed string into styles.css.
+  const tokensBlock = (() => {
+    const postcss = postcssModule();
+    let root;
+    try { root = postcss.parse(before); }
+    catch (e) { die('src/styles.css is not parseable CSS (' + e.message + '); refusing to rewrite it.'); }
+    const kids = root.nodes || [];
+    const isMarker = (n, text) => n.type === 'comment' && `/*${n.raws?.left ?? ' '}${n.text}${n.raws?.right ?? ' '}*/` === text;
+    const beginIdx = kids.findIndex((n) => isMarker(n, BEGIN_MARKER));
+    const endIdx = kids.findIndex((n, i) => i > beginIdx && isMarker(n, END_MARKER));
+    if (beginIdx < 0 || endIdx < 0) {
+      die('Could not find skill 02 BEGIN/END marker comments in src/styles.css — run skill 02 first.');
+    }
+    return kids.slice(beginIdx, endIdx + 1).map((n) => n.toString()).join('\n');
+  })();
 
   // Carry skill 02's typography across verbatim. A missing @theme block means
   // 02 did not run (or was undone) — halt rather than substitute a default,
@@ -513,6 +560,24 @@ async function rewriteStylesCss() {
   log(`  carrying ${directives.length} @import/@plugin directive(s) + skill 02's @theme across`);
 
   const next = stylesPrefix({ directives, theme: themeMatch[0] }) + '\n' + tokensBlock + '\n';
+
+  // Safety net: whatever the extraction logic did, the RESULT must be valid CSS
+  // that still carries the theme and the token block. Any future edge case in
+  // extraction therefore aborts safely with the original file intact, instead
+  // of writing something broken. styles.css.before.txt is the restore point.
+  {
+    const postcss = postcssModule();
+    try { postcss.parse(next); }
+    catch (e) {
+      die('The rewritten src/styles.css does not parse (' + e.message + '). ' +
+          'The original file is untouched; its snapshot is at ' +
+          path.join(STATE_SUB, 'styles.css.before.txt') + '.');
+    }
+    if (!/@theme\s*\{/.test(next) || !next.includes(BEGIN_MARKER) || !next.includes(END_MARKER)) {
+      die('The rewritten src/styles.css lost the @theme block or the skill 02 token markers. ' +
+          'Refusing to write; the original file is untouched.');
+    }
+  }
   await fs.writeFile(STYLES_PATH, next);
   log(`  rewrote src/styles.css (${before.length} → ${next.length} bytes)`);
   return { directives, theme: themeMatch[0] };
