@@ -58,10 +58,36 @@ covers any other pre-existing file, and setup.mjs snapshots a manifest
 **immediately after the rsync** if anything preserved is missing, changed
 kind, or changed content.
 
-Protected ≠ immutable: AFTER the merge-integrity check passes, the skill
-intentionally performs two documented hardening edits — appends env/build
-ignores to `.gitignore` and patches `tsconfig.json` excludes. Nothing else
-in the protected list is written by this skill.
+**What the manifest actually proves is not uniform**, and receipts must not
+blur it: plain files carry a sha256 and are content-verified, while
+**directories are verified by kind and existence only** — the manifest stores
+no recursive tree hash, so "the merge added nothing inside `design/`" rests on
+the root-anchored rsync exclude, not on a hash. `merge-summary.json` records
+`preservedHashedFiles` and `preservedKindOnlyDirs` separately so the
+distinction survives into the receipt.
+
+Protected ≠ immutable. The skill writes to some protected paths by design.
+The scaffold-facing writes below all happen *after* the merge-integrity check,
+so none can be confused with the merge touching a preserved path. The one
+exception is `.supertools-state/`, the skill's own output directory, which is
+written both before and after the check — see the note under the table.
+
+| Protected path | Write | Why it is not a merge violation |
+|---|---|---|
+| `.gitignore` | appends env/build ignores | hardening; append-only |
+| `.env.example` | creates it if absent | the protected exclude blocks the scaffold's copy; never overwrites an existing one |
+| `docs/` | creates the directory if absent | a declared protected path the verifier asserts exists |
+| `.supertools-state/` | receipts, manifests, logs | this is the skill's own output directory — it is on the protected list to stop the *scaffold* from writing there, not to stop the skill |
+
+`.supertools-state/` is written **both before and after** the check: the
+preserved manifest is snapshotted before the rsync, and the merge summary and
+captured logs after. That is the intended behaviour, not an exception to it.
+
+Protected paths this skill never writes: `CLAUDE.md`, `design/`, `research/`,
+`.env`, `.skills/`.
+
+`tsconfig.json` is also hardened (non-app folders appended to `exclude`), but
+it is **not** a protected path — it is a scaffold file the skill owns.
 
 Re-merge safety: an existing `drizzle/` dir is excluded wholesale from
 re-runs — drizzle generates random migration filenames per scaffold, so a
@@ -81,10 +107,46 @@ name ("table already exists" on the next apply).
    node .skills/01-project-init/setup.mjs
    ```
    Clones/resolves the stack, snapshots preserved files, runs `install.sh`
-   into a scratch tmp dir, rsyncs back with the exclusions above, runs
-   `npm install`, hardens `.gitignore` (env + build dirs) and `tsconfig.json`
-   (excludes non-app folders — rewrite drops JSONC comments, accepted
-   trade-off), and re-verifies the preserved manifest.
+   into a scratch tmp dir, rsyncs back with the exclusions above, re-verifies
+   the preserved manifest, delivers scaffold-only files the preserved-excludes
+   blocked, repairs the stack's test tooling, runs `npm install`, then hardens
+   `.gitignore` (env + build dirs) and `tsconfig.json` (excludes non-app
+   folders, spliced surgically so JSONC comments survive).
+
+### Repairs applied to the stack's output
+
+A fresh scaffold fails this skill's own verifier at **18/23**. Five defects
+cause it — **three in `supertools-stack`** (missing `vitest` dependency,
+missing `test` script, unpatched auth test) and **two in this skill's own
+protect/assert contract** (`.env.example` excluded rather than delivered,
+`docs/` asserted but never provided). Setup repairs all five after the
+merge-integrity check:
+
+| Defect | Repair |
+|---|---|
+| vitest configs, vitest test files and `test:contract` / `test:auth` scripts, but **no `vitest` dependency** — every test target fails `vitest: not found`, which also fails `tsc --noEmit` with TS2307 | adds `devDependencies.vitest` (pinned in `setup.mjs` as `VITEST_RANGE`) |
+| no `test` script at all, contradicting this file's claim that bare `npm test` is repointed at `test:contract` | adds `"test": "npm run test:contract"` |
+| `.env.example` is on the PRESERVED list, so the rsync excludes it — a project that has none can never receive the scaffold's copy | copies it explicitly after the integrity check, never overwriting |
+| `tests/20-auth/signup-flow.test.ts` POSTs with no `Origin` header, which Better Auth ≥1.4 rejects as CSRF (403 `MISSING_OR_NULL_ORIGIN`), failing both auth tests | adds `Origin: BASE` to the sign-up POST; if the headers aren't in the expected shape it logs a warning and leaves the file alone rather than guessing |
+| **(this skill, not the stack)** `docs/` is a declared protected path the verifier asserts exists, but neither the project nor the scaffold necessarily provides one — the skill asserted a path it never delivered | creates the directory |
+
+The three `supertools-stack` defects are repaired **locally only** — this skill
+never commits or pushes to that repo, so a project scaffolding from upstream
+will hit them again until they are fixed there.
+
+`tsconfig.json` hardening appends to the existing `exclude` array in place
+rather than reserializing the file. Three guards run before the write: the
+result must re-parse to exactly the intended array, every other top-level key
+must be unchanged, and no comment present in the original may be missing from
+the result. Adversarial cases for the splice and the JSONC stripper live at
+`.supertools-state/_review/tsconfig-splice-cases.mjs`.
+
+`docs/` is likewise a declared PRESERVED path that neither the project nor the
+scaffold necessarily provides, while the verifier asserts every PRESERVED entry
+exists. Setup creates the directory so the contract is self-consistent.
+
+These run **after** the preserved-manifest integrity check, so they can never
+be mistaken for the merge touching a preserved path.
 2. **Verify:**
    ```sh
    node .skills/01-project-init/verify.mjs

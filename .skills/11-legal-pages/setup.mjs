@@ -4,6 +4,7 @@
 // legal facts. Fails loudly if any {{TOKEN}} is left unresolved.
 
 import fs from 'node:fs/promises';
+import fsSync from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { loadEnv, PROJECT_ROOT } from '../_shared/env.mjs';
@@ -11,7 +12,15 @@ import { loadEnv, PROJECT_ROOT } from '../_shared/env.mjs';
 const SKILL_DIR = path.dirname(fileURLToPath(import.meta.url));
 const TPL = path.join(SKILL_DIR, 'templates');
 const STATE_SUB = path.join(PROJECT_ROOT, '.supertools-state', '11-legal-pages');
-const ROUTES = path.join(PROJECT_ROOT, 'src', 'routes');
+// The legal pages belong INSIDE the marketing layout: src/routes/_marketing/
+// is what wraps children in MarketingNav + Footer, so writing them at the
+// route root produced pages with no header or footer AND duplicate "/terms"
+// and "/privacy" paths that broke router generation outright. The scaffold's
+// 50-legal step already ships _marketing/terms.tsx and _marketing/privacy.tsx
+// carrying {{KEY}} placeholders that render VERBATIM in a live site; these
+// files replace them, which is what that step's own comment says a later
+// supertools-design step should do.
+const ROUTES = path.join(PROJECT_ROOT, 'src', 'routes', '_marketing');
 
 const log = (...a) => console.log(...a);
 const die = (m) => { console.error(m); process.exit(1); };
@@ -28,6 +37,58 @@ function todayISO() {
   return new Date().toISOString().slice(0, 10);
 }
 
+// Per-project legal copy.
+//
+// These templates carry NO product description of their own. An earlier version
+// hardcoded one project's prose — "turns a short visual quiz into a one-time
+// pack of AI-generated, wedding-aesthetic image artifacts", a Base/Premium
+// price, and a Pinterest licence grant — into EVERY project's Terms of Service.
+// That is a legally-operative document describing the wrong product, wrong
+// commercial model and wrong licence. There is no default and no fallback: a
+// project without a config halts here rather than shipping invented terms.
+function legalCopyTokens(projectName) {
+  const here = path.dirname(fileURLToPath(import.meta.url));
+  const own = path.join(here, `config.${projectName}.json`);
+  let cfg;
+  try {
+    cfg = JSON.parse(fsSync.readFileSync(own, 'utf-8'));
+  } catch (e) {
+    die(
+      `No legal copy for this project. Expected ${own}.\n` +
+      'Copy config.example.json to that path and fill it in — product summary, what data you ' +
+      'collect, your pricing posture, and the licence you grant.\n' +
+      'This skill deliberately has no default: shipping another project\'s Terms of Service ' +
+      'under your brand is worse than shipping none.',
+    );
+  }
+
+  const required = ['productSummary', 'dataItems', 'pricingClause', 'licenseClause', 'refundSummary'];
+  const missing = required.filter((k) => !cfg[k] || (Array.isArray(cfg[k]) && !cfg[k].length));
+  if (missing.length) die(`${own} is missing: ${missing.join(', ')}`);
+  if (!Array.isArray(cfg.dataItems)) die(`${own}: dataItems must be an array of <li> inner HTML strings`);
+
+  // Rendered prominently when the product handles microphones, cameras, screen
+  // capture, location, health or financial data. Omitted entirely otherwise —
+  // an empty callout is worse than none.
+  const sensitive = cfg.sensitiveDataNote
+    ? `
+        <div className="not-prose my-6 rounded-lg border-l-4 border-amber-500 border-y border-r border-amber-200 bg-amber-50/60 px-4 py-3 dark:border-amber-900/60 dark:border-l-amber-500 dark:bg-amber-950/20">
+          <p className="text-sm font-semibold text-amber-900 dark:text-amber-100">What these recordings can contain</p>
+          <p className="mt-1 text-sm text-amber-800/90 dark:text-amber-200/80">${cfg.sensitiveDataNote}</p>
+        </div>
+`
+    : '';
+
+  return {
+    PRODUCT_SUMMARY: cfg.productSummary,
+    DATA_ITEMS: cfg.dataItems.map((li) => `          <li>${li}</li>`).join('\n'),
+    PRICING_CLAUSE: cfg.pricingClause,
+    LICENSE_CLAUSE: cfg.licenseClause,
+    REFUND_SUMMARY: cfg.refundSummary,
+    SENSITIVE_DATA_BLOCK: sensitive,
+  };
+}
+
 async function main() {
   loadEnv();
   await fs.mkdir(STATE_SUB, { recursive: true });
@@ -40,9 +101,7 @@ async function main() {
     DOMAIN: domain,
     LEGAL_ENTITY: process.env.LEGAL_ENTITY || 'NMajor Studios LLC',
     ENTITY_JURISDICTION: process.env.LEGAL_JURISDICTION || 'a Wyoming, USA limited liability company',
-    MOR: process.env.MOR_NAME || 'Polar (Polar Software Inc.)',
-    PRICE_BASE: process.env.PRICE_BASE || '$19',
-    PRICE_PREMIUM: process.env.PRICE_PREMIUM || '$39',
+    ...legalCopyTokens(project.projectName),
     PRIVACY_EMAIL: `privacy@${domain}`,
     SUPPORT_EMAIL: `support@${domain}`,
     EFFECTIVE_DATE: todayISO(),
@@ -65,6 +124,20 @@ async function main() {
 
   const summary = { domain, tokens, pages: written, completedAt: new Date().toISOString() };
   await fs.writeFile(path.join(STATE_SUB, 'summary.json'), JSON.stringify(summary, null, 2) + '\n');
+  // TanStack Router types its route paths from a generated tree. Adding route
+  // FILES without regenerating it leaves `createFileRoute('/terms')` failing
+  // TS2345 ("not assignable to keyof FileRoutesByPath") and the build broken —
+  // the pages exist but the app does not compile.
+  {
+    const { spawnSync } = await import('node:child_process');
+    const r = spawnSync('npm', ['run', 'generate-routes'], { cwd: PROJECT_ROOT, encoding: 'utf-8' });
+    if (r.status !== 0) {
+      die('npm run generate-routes failed after writing the legal routes:\n' +
+          (r.stderr || r.stdout || '').slice(-800));
+    }
+    console.log('  regenerated the router tree');
+  }
+
   console.log('---SETUP_DONE---');
   console.log(JSON.stringify(summary, null, 2));
 }

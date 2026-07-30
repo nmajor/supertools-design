@@ -1,0 +1,15 @@
+{
+  "_comment": "Per-project legal copy. Copy to config.<projectName>.json and edit. These templates ship NO product description of their own — an earlier version hardcoded one project's wedding-image-generator prose into every project's Terms of Service, which is a legally-operative document describing the wrong product. If a project supplies no config, setup halts rather than inventing terms.",
+  "productSummary": "One or two sentences describing what the service actually does, in plain language.",
+  "dataItems": [
+    "<strong>Account data</strong> — your email address and sign-in details.",
+    "<strong>Support messages</strong> — anything you send us by email or through our forms.",
+    "<strong>Privacy-respecting analytics</strong> — aggregate usage via a self-hosted analytics tool; no third-party ad trackers."
+  ],
+  "pricingClause": "Describe the commercial model, or state plainly that the service is not yet sold. Do NOT invent a price.",
+  "licenseClause": "Describe what rights the user has in what they create or receive.",
+  "refundSummary": "One sentence describing the refund posture, or that nothing is sold yet.",
+  "sensitiveDataNote": "Optional. If the product handles microphones, cameras, screen capture, location, health or financial data, say so here explicitly — this text is rendered prominently in the privacy policy.",
+  "sellsProduct": false,
+  "_comment_sellsProduct": "Set true once the product is actually sold. Gates the Merchant-of-Record and refund-window assertions in verify.mjs, so the gate and the pages cannot disagree."
+}

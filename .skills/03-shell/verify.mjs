@@ -2,12 +2,13 @@
 // 03-shell verifier.
 // Checks shell files in place, demo files gone, radix dep installed, root.tsx
 // wired, styles.css cleaned, build+tsc green, and the rendered HTML actually
-// contains the project wordmark + "Made with AI" footer pill.
+// contains the project wordmark.
 
 import fs from 'node:fs/promises';
 import path from 'node:path';
 import net from 'node:net';
 import { spawn, spawnSync } from 'node:child_process';
+import { createRequire } from 'node:module';
 import { loadEnv, PROJECT_ROOT } from '../_shared/env.mjs';
 import { readProject } from '../_shared/project.mjs';
 import { parseTokens, readTokensCss, shellComponentFiles } from '../_shared/design-os.mjs';
@@ -46,6 +47,22 @@ async function killGroup(pid) {
   try { process.kill(-pid, 'SIGKILL'); } catch {}
 }
 
+// Scan the whole project, not just src/ — a route, a script or a config file
+// outside src/ can import a component just as well, and deleting something
+// they use breaks the build all the same.
+const SCAN_SKIP = new Set(['node_modules', '.git', '.wrangler', '.output', '.tanstack', 'dist', 'design', '.skills', '.supertools-state']);
+async function sourceFilesUnder(dir, acc = []) {
+  let entries;
+  try { entries = await fs.readdir(dir, { withFileTypes: true }); } catch { return acc; }
+  for (const e of entries) {
+    if (SCAN_SKIP.has(e.name)) continue;
+    const p = path.join(dir, e.name);
+    if (e.isDirectory()) await sourceFilesUnder(p, acc);
+    else if (/\.(ts|tsx|js|jsx|mjs|cjs)$/.test(e.name)) acc.push(p);
+  }
+  return acc;
+}
+
 async function main() {
   loadEnv();
 
@@ -64,16 +81,82 @@ async function main() {
       ? pass(`shell: ${f}`) : fail(`shell: ${f}`, 'missing');
   }
 
+  // A scaffold demo component must be EITHER removed OR still referenced by
+  // something. Asserting unconditional removal was wrong: Footer.tsx is app
+  // chrome the export's shell replaces, but it is also imported by the
+  // scaffold's marketing layout, and deleting it broke the build with
+  // "Cannot find module '../../components/Footer'". What matters is that the
+  // project is left consistent, not that a particular file is gone.
+  const srcFiles = await sourceFilesUnder(PROJECT_ROOT);
   for (const f of ['Header.tsx', 'Footer.tsx', 'ThemeToggle.tsx']) {
-    (!await exists(path.join(PROJECT_ROOT, 'src/components', f)))
-      ? pass(`removed: src/components/${f}`)
-      : fail(`removed: src/components/${f}`, 'still present');
+    const p = path.join(PROJECT_ROOT, 'src/components', f);
+    if (!await exists(p)) { pass(`scaffold demo resolved: ${f} removed`); continue; }
+
+    const base = f.replace(/\.(tsx?|jsx?)$/, '');
+    const importRe = new RegExp(`from\\s+['"][^'"]*/(?:components/)?${base}['"]`);
+    const referrers = [];
+    for (const sf of srcFiles) {
+      if (sf === p) continue;
+      if (importRe.test(await fs.readFile(sf, 'utf-8'))) {
+        referrers.push(path.relative(PROJECT_ROOT, sf));
+      }
+    }
+    referrers.length
+      ? pass(`scaffold demo resolved: ${f} kept — still imported by ${referrers.join(', ')}`)
+      : fail(`scaffold demo resolved: ${f}`, 'still present and nothing imports it');
   }
 
+  // Assert that every external package the COPIED files import is declared —
+  // not that one named package is present.
+  //
+  // This used to require @radix-ui/react-dropdown-menu unconditionally, which
+  // was wrong twice over: setup now installs whatever the export imports, so a
+  // project that never imports Radix would fail for no reason; and here it
+  // PASSED only because a stale entry sat in package.json from the old
+  // hardcoded-install behaviour, while the export imports no Radix at all.
+  // A check that passes on a stale artifact is worse than no check.
   const pkg = JSON.parse(await fs.readFile(path.join(PROJECT_ROOT, 'package.json'), 'utf-8'));
-  pkg.dependencies?.['@radix-ui/react-dropdown-menu']
-    ? pass('dep: @radix-ui/react-dropdown-menu')
-    : fail('dep: @radix-ui/react-dropdown-menu', 'not in dependencies');
+  {
+    const declared = new Set([
+      ...Object.keys(pkg.dependencies || {}),
+      ...Object.keys(pkg.devDependencies || {}),
+    ]);
+    const req = createRequire(path.join(PROJECT_ROOT, 'noop.js'));
+    let ts;
+    try { ts = req('typescript'); } catch { ts = null; }
+
+    if (!ts) {
+      fail('external imports of the copied shell are declared', 'typescript not resolvable from the project');
+    } else {
+      const copied = [];
+      for (const f of shellFiles) copied.push(path.join(PROJECT_ROOT, 'src/components/shell', f));
+      const kitDir = path.join(PROJECT_ROOT, 'src', 'kit');
+      try {
+        for (const f of await fs.readdir(kitDir)) {
+          if (/\.(ts|tsx)$/.test(f)) copied.push(path.join(kitDir, f));
+        }
+      } catch { /* export ships no kit */ }
+
+      const needed = new Set();
+      for (const abs of copied) {
+        let src;
+        try { src = await fs.readFile(abs, 'utf-8'); } catch { continue; }
+        const pre = ts.preProcessFile(src, true, true);
+        for (const f of pre.importedFiles || []) {
+          const spec = f.fileName;
+          if (spec.startsWith('.') || spec.startsWith('/') || spec.startsWith('@/') ||
+              spec.startsWith('#/') || spec.includes(':')) continue;
+          const parts = spec.split('/');
+          needed.add(spec.startsWith('@') ? parts.slice(0, 2).join('/') : parts[0]);
+        }
+      }
+      const missing = [...needed].filter((n) => !declared.has(n)).sort();
+      missing.length === 0
+        ? pass('external imports of the copied shell are declared',
+               needed.size ? [...needed].sort().join(', ') : 'the export imports no external packages')
+        : fail('external imports of the copied shell are declared', `undeclared: ${missing.join(', ')}`);
+    }
+  }
 
   const rootTsx = await fs.readFile(path.join(PROJECT_ROOT, 'src/routes/__root.tsx'), 'utf-8');
   /from\s+['"]\.\.\/components\/shell['"]/.test(rootTsx)
@@ -90,7 +173,7 @@ async function main() {
 
   // The rewrite must not have dropped skill 02's work. Checked against the
   // project's own export rather than a named colour — this used to assert
-  // --color-primary-900: #881337, which no non-reference project ever has.
+  // a specific brand colour, which no non-reference project ever has.
   {
     const exportTokens = parseTokens(readTokensCss());
     const shipped = parseTokens(css);
@@ -128,9 +211,23 @@ async function main() {
       // The shell renders this project's brand. Anything more specific than
       // that — a particular footer pill, a particular tagline — belongs to
       // whoever designed the shell, not to this skill.
-      new RegExp(BRAND.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'i').test(res.html)
-        ? pass(`HTML contains the ${BRAND} wordmark`)
-        : fail(`HTML contains the ${BRAND} wordmark`, `not found in ${res.html.length} bytes`);
+      //
+      // Search the BODY only. Searching the whole document made this check
+      // vacuous: __root.tsx puts the brand in <title>, so the assertion passed
+      // whether or not the shell rendered anything at all.
+      const bodyMatch = res.html.match(/<body[^>]*>([\s\S]*)<\/body>/i);
+      const body = bodyMatch ? bodyMatch[1] : '';
+      const brandRe = new RegExp(BRAND.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'i');
+      if (!bodyMatch) {
+        fail(`rendered body contains the ${BRAND} wordmark`, 'no <body> in the response');
+      } else if (brandRe.test(body)) {
+        pass(`rendered body contains the ${BRAND} wordmark`);
+      } else {
+        fail(
+          `rendered body contains the ${BRAND} wordmark`,
+          `not found in ${body.length} bytes of <body> (present in <head>: ${brandRe.test(res.html.slice(0, res.html.indexOf('<body')))})`,
+        );
+      }
     }
   } finally {
     if (vite.pid) await killGroup(vite.pid);

@@ -34,7 +34,10 @@ export function app(pathSuffix, opts = {}) {
 }
 
 // Lisbon working hours: Mon–Fri 09:00–17:00, weekends closed.
-export function lisbonWorkingHours() {
+// Mon-Fri 09:00-17:00, weekends closed. Nothing about this is city-specific —
+// only the old name was. Kept as businessHours(); lisbonWorkingHours is a
+// deprecated alias so existing callers keep working.
+export function businessHours() {
   return [0, 1, 2, 3, 4, 5, 6].map((day) => {
     const weekend = day === 0 || day === 6;
     return {
@@ -48,3 +51,6 @@ export function lisbonWorkingHours() {
     };
   });
 }
+
+// Deprecated: use businessHours(). Retained so older skills do not break.
+export const lisbonWorkingHours = businessHours;
