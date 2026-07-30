@@ -1,7 +1,10 @@
 import { createFileRoute } from '@tanstack/react-router'
-import { SupportForm } from '../components/SupportForm'
+// The `@/` alias (tsconfig paths -> ./src/*) rather than a relative path:
+// these pages live under the marketing layout, and a `../` count that is
+// correct at one depth silently breaks when the file moves.
+import { SupportForm } from '@/components/SupportForm'
 
-export const Route = createFileRoute('/contact')({
+export const Route = createFileRoute('/_marketing/contact')({
   head: () => ({ meta: [{ title: 'Contact · __BRAND_NAME__' }] }),
   component: ContactPage,
 })

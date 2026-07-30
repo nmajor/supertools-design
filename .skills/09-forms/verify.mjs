@@ -93,7 +93,11 @@ async function main() {
   // worker files + form pages
   for (const f of [
     'src/lib/chatwoot-forms.ts', 'src/routes/api/contact.ts', 'src/routes/api/privacy.ts',
-    'src/components/SupportForm.tsx', 'src/routes/contact.tsx', 'src/routes/privacy-request.tsx',
+    // Under the marketing layout — src/routes/_marketing/ is what wraps pages
+    // in MarketingNav + Footer. These used to be asserted at the route root,
+    // where the skill no longer writes them.
+    'src/components/SupportForm.tsx',
+    'src/routes/_marketing/contact.tsx', 'src/routes/_marketing/privacy-request.tsx',
   ]) {
     (await exists(path.join(PROJECT_ROOT, f))) ? pass(`file ${f}`) : fail(`file ${f}`, 'missing');
   }

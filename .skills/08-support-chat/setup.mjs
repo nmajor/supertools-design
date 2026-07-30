@@ -6,12 +6,21 @@
 import fs from 'node:fs/promises';
 import path from 'node:path';
 import { loadEnv, requireEnv, writeEnvVar, PROJECT_ROOT } from '../_shared/env.mjs';
-import { platform, app, chatwootBase, lisbonWorkingHours } from '../_shared/chatwoot.mjs';
+import { platform, app, chatwootBase, businessHours } from '../_shared/chatwoot.mjs';
+import { parseTokens, palette } from '../_shared/design-os.mjs';
 import { appendRalphRequirement } from '../_shared/state.mjs';
 
 const STATE_SUB = path.join(PROJECT_ROOT, '.supertools-state', '08-support-chat');
-const ROSE = '#881337';
-const TZ = 'Europe/Lisbon';
+// The widget colour is the PROJECT's primary, read from the Design OS export.
+// This was hardcoded '#881337' — the reference implementation's rose — so every
+// project's support widget rendered in that brand regardless of its own
+// (authoring-checklist rule 23).
+const WIDGET_COLOR = palette(parseTokens()).primary;
+
+// Support timezone. Was hardcoded 'Europe/Lisbon', which is a different
+// project's city. Defaults to UTC — a neutral default is honest, another
+// product's timezone is not. Override with SUPPORT_TIMEZONE.
+const TZ = process.env.SUPPORT_TIMEZONE || 'UTC';
 
 const log = (...a) => console.log(...a);
 const die = (m) => { console.error(m); process.exit(1); };
@@ -93,8 +102,10 @@ async function ensureWebsiteInbox(accountId, projectName, domain, existing) {
       csat_survey_enabled: true,
       enable_auto_assignment: true,
       working_hours_enabled: true,
-      working_hours: lisbonWorkingHours(),
-      out_of_office_message: 'Thanks for reaching out. Support hours are Mon–Fri, 9:00–17:00 Lisbon time, but we still receive your message and may reply sooner.',
+      working_hours: businessHours(),
+      // Derived from TZ so the message cannot claim a timezone the inbox is
+      // not actually on. This used to say "Lisbon time" in every project.
+      out_of_office_message: `Thanks for reaching out. Support hours are Mon–Fri, 9:00–17:00 (${TZ}), but we still receive your message and may reply sooner.`,
       timezone: TZ,
       sender_name_type: 'friendly',
       business_name: projectName,
@@ -103,7 +114,7 @@ async function ensureWebsiteInbox(accountId, projectName, domain, existing) {
         website_url: `https://www.${domain}`,
         welcome_title: `Welcome to ${projectName}`,
         welcome_tagline: 'Ask a question and we will get back to you.',
-        widget_color: ROSE,
+        widget_color: WIDGET_COLOR,
       },
     }),
   });
@@ -145,7 +156,7 @@ async function ensureEmailInbox(accountId, name, email, password, projectName, d
       enable_auto_assignment: true,
       csat_survey_enabled: true,
       working_hours_enabled: true,
-      working_hours: lisbonWorkingHours(),
+      working_hours: businessHours(),
       timezone: TZ,
       sender_name_type: 'friendly',
       business_name: projectName,

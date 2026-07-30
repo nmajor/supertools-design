@@ -92,12 +92,116 @@ async function ensureAutomation(accountId, inboxId, ruleName, ownerId, rules) {
   log(`[automation] ${found ? 'repaired' : 'created'} ${ruleName}`);
 }
 
+// Find the top-level object's opening brace, skipping any leading comment.
+function topLevelBrace(text) {
+  let j = 0;
+  for (;;) {
+    while (j < text.length && /\s/.test(text[j])) j++;
+    if (text[j] === '/' && text[j + 1] === '/') { while (j < text.length && text[j] !== '\n') j++; }
+    else if (text[j] === '/' && text[j + 1] === '*') {
+      j += 2;
+      while (j < text.length - 1 && !(text[j] === '*' && text[j + 1] === '/')) j++;
+      j += 2;
+    } else return text[j] === '{' ? j : -1;
+  }
+}
+
+// Locate a top-level "vars" object literal, string- and comment-aware, so a
+// commented-out `// "vars": { ... }` example cannot match.
+function findVarsObject(text) {
+  let i = 0, inString = false, depth = 0;
+  while (i < text.length) {
+    const c = text[i];
+    if (inString) {
+      if (c === '\\') { i += 2; continue; }
+      if (c === '"') inString = false;
+      i++; continue;
+    }
+    if (c === '"') {
+      if (depth === 1 && text.startsWith('"vars"', i)) {
+        let j = i + '"vars"'.length;
+        while (j < text.length && /\s/.test(text[j])) j++;
+        if (text[j] === ':') {
+          j++;
+          while (j < text.length && /\s/.test(text[j])) j++;
+          if (text[j] === '{') {
+            let k = j + 1, d = 1, inStr2 = false;
+            while (k < text.length && d > 0) {
+              const ch = text[k];
+              if (inStr2) {
+                if (ch === '\\') { k += 2; continue; }
+                if (ch === '"') inStr2 = false;
+              } else if (ch === '"') inStr2 = true;
+              else if (ch === '{') d++;
+              else if (ch === '}') d--;
+              k++;
+            }
+            if (d !== 0) return null;
+            return { open: j, close: k - 1 };
+          }
+        }
+      }
+      inString = true; i++; continue;
+    }
+    if (c === '/' && text[i + 1] === '/') { while (i < text.length && text[i] !== '\n') i++; continue; }
+    if (c === '/' && text[i + 1] === '*') {
+      i += 2;
+      while (i < text.length - 1 && !(text[i] === '*' && text[i + 1] === '/')) i++;
+      i += 2; continue;
+    }
+    if (c === '{' || c === '[') depth++;
+    else if (c === '}' || c === ']') depth--;
+    i++;
+  }
+  return null;
+}
+
 async function patchWranglerVars(host, identifiers) {
   const p = path.join(PROJECT_ROOT, 'wrangler.jsonc');
-  const cfg = JSON.parse(stripJsonc(await fs.readFile(p, 'utf-8')));
-  cfg.vars = { ...(cfg.vars || {}), CHATWOOT_HOST: host, ...identifiers };
-  await fs.writeFile(p, JSON.stringify(cfg, null, 2) + '\n');
-  log('[worker] wrangler.jsonc vars upserted');
+  const raw = await fs.readFile(p, 'utf-8');
+  const cfg = JSON.parse(stripJsonc(raw));
+  const wanted = { ...(cfg.vars || {}), CHATWOOT_HOST: host, ...identifiers };
+
+  // wrangler.jsonc is JSONC and its comments are documentation. This used to be
+  // `JSON.stringify(cfg, null, 2)`, which silently deleted EVERY comment in the
+  // file — the scaffold's explanatory blocks and any a project had added —
+  // and reflowed the whole thing. Authoring-checklist rule 12 forbids that.
+  // Splice only the vars object; every other byte is preserved verbatim.
+  const indent = (raw.match(/\n([ \t]+)"/) || [null, '\t'])[1];
+  const body = Object.entries(wanted)
+    .map(([k, v]) => `\n${indent}${indent}${JSON.stringify(k)}: ${JSON.stringify(v)}`)
+    .join(',') + `\n${indent}`;
+
+  const loc = findVarsObject(raw);
+  let next;
+  if (loc) {
+    next = raw.slice(0, loc.open + 1) + body + raw.slice(loc.close);
+  } else {
+    const brace = topLevelBrace(raw);
+    if (brace < 0) die('wrangler.jsonc does not start with an object; refusing to patch blindly.');
+    next = raw.slice(0, brace + 1) + `\n${indent}"vars": {${body}},` + raw.slice(brace + 1);
+  }
+
+  // Prove the splice before writing: valid JSONC, vars exactly as intended,
+  // every other top-level key untouched, and no comment lost.
+  let reparsed;
+  try { reparsed = JSON.parse(stripJsonc(next)); }
+  catch (e) { die(`wrangler.jsonc splice produced invalid JSONC: ${e.message}`); }
+  if (JSON.stringify(reparsed.vars) !== JSON.stringify(wanted)) {
+    die('wrangler.jsonc splice did not yield the intended vars; refusing to write.');
+  }
+  for (const k of Object.keys(cfg)) {
+    if (k === 'vars') continue;
+    if (JSON.stringify(reparsed[k]) !== JSON.stringify(cfg[k])) {
+      die(`wrangler.jsonc splice altered unrelated key "${k}"; refusing to write.`);
+    }
+  }
+  const comments = (t) => (t.match(/\/\*[\s\S]*?\*\/|\/\/[^\n]*/g) || []).map((c) => c.trim());
+  const lost = comments(raw).filter((c) => !comments(next).includes(c));
+  if (lost.length) die(`wrangler.jsonc splice dropped ${lost.length} comment(s); refusing to write.`);
+
+  await fs.writeFile(p, next);
+  log('[worker] wrangler.jsonc vars upserted (spliced; comments preserved)');
 }
 
 async function writeDevVars(host, identifiers) {
@@ -134,11 +238,24 @@ async function copyTemplates() {
   const brand = readProject().brandName;
   for (const page of ['contact.tsx', 'privacy-request.tsx']) {
     const tpl = await fs.readFile(path.join(TPL, 'routes-pages', page), 'utf-8');
+    // Under the marketing layout, not the route root. src/routes/_marketing/
+    // is what wraps children in MarketingNav + Footer; writing these at the
+    // root produced working pages with no site header and no footer. The URL
+    // is unchanged because _marketing is a PATHLESS layout route, so every
+    // existing /contact and /privacy-request link still resolves.
     await fs.writeFile(
-      path.join(PROJECT_ROOT, 'src', 'routes', page),
+      path.join(PROJECT_ROOT, 'src', 'routes', '_marketing', page),
       tpl.replaceAll('__BRAND_NAME__', brand));
   }
-  log('[worker] wrote API routes + SupportForm + /contact + /privacy-request pages');
+  log('[worker] wrote API routes + SupportForm + /contact + /privacy-request pages (marketing layout)');
+
+  // Adding route FILES without regenerating the tree leaves createFileRoute()
+  // failing TS2345 and the build broken.
+  {
+    const r = spawnSync('npm', ['run', 'generate-routes'], { cwd: PROJECT_ROOT, encoding: 'utf-8' });
+    if (r.status !== 0) die('npm run generate-routes failed:\n' + (r.stderr || r.stdout || '').slice(-600));
+    log('[worker] regenerated the router tree');
+  }
 }
 
 function regenTypes() {

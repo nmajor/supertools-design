@@ -241,18 +241,31 @@ async function main() {
   const replyTo = `support@${domain}`;
 
   const { sendKey, keyId, minted, label } = await ensureSendKey(emailDomain);
-  const sent = await sendTestEmail(emailDomain, recipient, projectName, sendKey, replyTo);
-  const sentAt = new Date().toISOString();
 
-  await writeEnvVar('AHASEND_FROM_EMAIL', `hello@${emailDomain}`);
-  await writeEnvVar('AHASEND_FROM_DOMAIN', emailDomain);
-  await writeEnvVar('AHASEND_REPLY_TO', replyTo);
+  // PERSIST THE KEY BEFORE THE TEST SEND.
+  //
+  // These three writes used to sit AFTER sendTestEmail(), which die()s on
+  // failure. A single Ahasend 500 on the test send therefore left a freshly
+  // minted key live in their account with nothing on this machine able to bind
+  // to it — the next run found an unbindable key and refused to continue,
+  // requiring FORCE_REMINT_SEND_KEY=1 to clean up. Minting a credential is the
+  // irreversible step; recording it must not be contingent on a later,
+  // failable network call.
+  //
   // Unconditional (writeEnvVar is idempotent): also covers .env recovery,
   // where a valid key pair arrives via the machine env and must be
   // re-persisted so verify's .env checks hold.
   await writeEnvVar('AHASEND_SEND_API_KEY', sendKey);
   await writeEnvVar('AHASEND_SEND_API_KEY_ID', keyId);
   await writeEnvVar('AHASEND_SEND_API_KEY_FPR', createHash('sha256').update(sendKey).digest('hex'));
+  if (minted) log(`[4.5/5] Persisted send key ${keyId} to .env before sending (recoverable if the send fails)`);
+
+  const sent = await sendTestEmail(emailDomain, recipient, projectName, sendKey, replyTo);
+  const sentAt = new Date().toISOString();
+
+  await writeEnvVar('AHASEND_FROM_EMAIL', `hello@${emailDomain}`);
+  await writeEnvVar('AHASEND_FROM_DOMAIN', emailDomain);
+  await writeEnvVar('AHASEND_REPLY_TO', replyTo);
   log('Wrote AHASEND_FROM_EMAIL + AHASEND_FROM_DOMAIN + AHASEND_REPLY_TO + AHASEND_SEND_API_KEY(+_ID,+_FPR) to .env');
 
   // The Worker's real transactional sends should use this same envelope.
